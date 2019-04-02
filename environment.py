@@ -1,0 +1,132 @@
+" Define an environment and build utilities to get state, reward, action..."
+from pyrep_legacy import PyRep
+import vrep
+from math import sqrt, pi
+from matplotlib import pyplot as plt
+import random
+
+class environment(object):
+    def __init__(self,position_control=True):
+        self.pr = PyRep(port=19997)
+        self.pr.connect(synchronous=True)
+        self.pr.start()
+
+        self.reached = 0
+        self.position_control = position_control
+
+        self.target = self.pr.get_object('target')
+        self.end_effector = self.pr.get_object('end_effector')
+        self.joint1 = self.pr.get_joint('link_1')
+        self.joint2 = self.pr.get_joint('link_2')
+        self.reacher = self.pr.get_object('reacher')
+        self.camera = self.pr.get_camera('Vision_sensor')
+
+        self.increment = 0.5*pi/180 # to radians
+        self.action_all = [[self.increment,self.increment],
+                      [-self.increment,-self.increment],
+                      [0,self.increment],
+                      [0,-self.increment],
+                      [self.increment,0],
+                      [-self.increment,0],
+                      [-self.increment,self.increment],
+                      [self.increment,-self.increment],
+                      [0,0]]
+
+    def render(self):
+        img = self.camera.capture_rgb()
+        return img
+
+    def step_(self,action):
+        if self.position_control != True:
+            velocity_all = self.action_all[action]
+            #TO DO
+            self.joint1.set_target_velocity(velocity_all[0]) # radians/s
+            self.joint2.set_target_velocity(velocity_all[1])
+        else:
+            position_all = self.action_all[action]
+            joints_pos = self.get_joints_pos()
+            joint1_pos = joints_pos[0]
+            joint2_pos = joints_pos[1]
+            self.joint1.set_angle(joint1_pos + position_all[0]) # radians
+            self.joint2.set_angle(joint2_pos + position_all[1])
+
+        self.pr.step()
+
+        self.pos_target = self.target.get_position()
+        self.pos_end_effector = self.end_effector.get_position(relative_to=self.target)
+        self.or_target = self.target.get_orientation()
+        self.or_end_effector = self.end_effector.get_orientation(relative_to=self.target)
+
+        self.dist_target = sqrt((self.pos_target[0])**2 + (self.pos_target[1])**2)
+        self.dist_end_effector = sqrt((self.pos_end_effector[0])**2 + (self.pos_end_effector[1])**2)
+
+        if self.dist_target == self.dist_end_effector and self.or_target == self.or_end_effector:
+            # +0.125>self.dist_end_effector>-0.125 and +2>self.or_end_effector>-2
+            self.reached = 1
+            reward = 1
+            print('Target reached')
+        else:
+            reward = -1
+
+        # obs = self.camera.capture_rgb()
+
+        return reward
+
+
+    def end_effector_pos(self):
+        return None
+
+    def target_position(self):
+        return self.target.get_position()
+
+    def get_joints_pos(self):
+        self.joint1_pos = self.joint1.get_angle()
+        self.joint2_pos = self.joint2.get_angle()
+        return [self.joint1_pos,self.joint2_pos]
+
+    def reset_target_position(self,random_=False,x=0.5,y=0.5):
+        if random_ == True:
+            xy_min = 0.3
+            xy_max = 1.22
+            x = random.random()*(xy_max-xy_min) + xy_min
+            y_max = sqrt(1.22**2-x**2)
+            y_min = sqrt(0.3**2-x**2)
+            y = random.random()*(y_max-y_min) + y_min
+
+        self.target.set_position([x,y,0.125])
+        self.pr.step(blocking=True)
+
+    def reset_robot_position(self,random_=False,joint1_pos=0,joint2_pos=-0.6109):
+        if random_ == True:
+            joint1_pos = random.random()*2*pi
+            joint2_pos = random.random()*2*pi
+
+        self.joint1.set_angle(joint1_pos) # radians
+        self.joint2.set_angle(joint2_pos)
+        self.pr.step()
+
+    def display(self):
+        img = self.camera.capture_rgb()
+        plt.imshow(img,interpolation='nearest')
+        plt.axis('off')
+        plt.show()
+        plt.pause(0.01)
+
+    def random_agent(self,episodes=10):
+        steps = 0
+        steps_all = []
+        for _ in range(episodes):
+            while True:
+                action = random.randrange(9)
+                reward = self.step_(action)
+                steps += 1
+
+                if reward == 1:
+                    steps_all.append(steps)
+                    break
+
+        return sum(steps_all)/episodes
+
+    def terminate(self):
+        self.pr.stop()
+        self.pr.disconnect()
