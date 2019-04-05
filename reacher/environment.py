@@ -90,7 +90,7 @@ class environment(object):
             xy_max = 1.22
             x = random.random()*(xy_max-xy_min) + xy_min
             y_max = sqrt(1.22**2-x**2)
-            y_min = sqrt(0.3**2-x**2)
+            y_min = 0
             y = random.random()*(y_max-y_min) + y_min
 
         self.target.set_position([x,y,0.125])

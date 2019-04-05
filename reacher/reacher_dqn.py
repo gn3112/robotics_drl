@@ -16,6 +16,7 @@ import math
 import numpy as np
 
 class Replay_Buffer(object):
+#python maxlem buffer
 # Transition: state, action, reward, next state
 # List of of dim N x 4 with len() < capacity
 # Dictionnary
@@ -58,7 +59,7 @@ class DQN(nn.Module):
         conv_h = conv2d_size_out(conv2d_size_out(conv2d_size_out(h)))
         conv_w = conv2d_size_out(conv2d_size_out(conv2d_size_out(w)))
 
-        self.fc1 = nn.Linear(conv_h*conv_w*32,2) # 2 discrete actions
+        self.fc1 = nn.Linear(conv_h*conv_w*32,9)
 
     def forward(self, x):
         x = F.relu(self.bn1(self.conv1(x)))
@@ -68,12 +69,10 @@ class DQN(nn.Module):
 
 def select_actions(state,eps_start,eps_end,eps_decay,steps_done,policy_net):
     sample = random.random()
-    eps_threshold = eps_end + (eps_start - eps_end) * \
-    math.exp(-1. * steps_done / eps_decay)
-    steps_done += 1
+    eps_threshold = eps_end + (eps_start - eps_end) * math.exp(-1. * steps_done / eps_decay)
     if sample > eps_threshold:
-        with torch.no_grad():
-            return policy_net(state).max(1)[1].view(1, 1) #check here
+        policy_net.eval()
+        return policy_net(state).argmax(1)
     else:
         return torch.tensor([[random.randrange(9)]], dtype=torch.long)
 
@@ -82,7 +81,7 @@ def evaluation():
     # Reward over training steps
     return None
 
-def optimize_model(memory, gamma, batch_size):
+def optimize_model(memory, gamma, batch_size, device):
     transitions = memory.sample(batch_size)
 
     state_batch = []
@@ -100,11 +99,23 @@ def optimize_model(memory, gamma, batch_size):
     state_batch = torch.tensor(state_batch)
     action_batch = torch.tensor(action_batch)
     reward_batch =  torch.tensor(reward_batch)
+    state_next_batch = torch.tensor(state_next_batch)
+
+    non_final_idx = []
+    for idx, r in enumerate(reward_batch):
+        if r == 1:
+            non_final_idx.append(idx)
+
+    non_final_idx = torch.tensor(non_final_idx)
+    state_next_batch_nf = state_next_batch[non_final_idx]
 
     state_action_values = policy_net(state_batch).gather(1, action_batch)
 
-    # next_state_values = torch.zeros(batch_size, device=device)
-    next_state_values = target_net(state_next_batch).max(1)[0].detach()
+    for param in target_net.parameters():
+        param.requires_grad = False
+
+    next_state_values = torch.zeros(batch_size,device=device)
+    next_state_values[non_final_idx] = target_net(state_next_batch_nf).max(1)[0]
     expected_state_action_values = (next_state_values * gamma) + reward_batch
 
     loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
@@ -115,10 +126,12 @@ def optimize_model(memory, gamma, batch_size):
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     env = environment()
+    env.reset_target_position(random_=True)
+    env.reset_robot_position(random_=False)
 
     resize = T.Compose([T.ToPILImage(),
                         T.Grayscale(num_output_channels=1),
-                        T.Resize(64, interpolation=Image.CUBIC),
+                        T.Resize(64, interpolation=Image.BILINEAR),
                         T.ToTensor()])
     img = env.render()
     img = torch.from_numpy(img)
@@ -137,7 +150,7 @@ def main():
     gamma = 0.999
     eps_start = 0.9
     eps_end = 0.05
-    eps_decay = 200
+    eps_decay = 100
     target_update = 10
 
     num_episodes = 500
@@ -153,15 +166,18 @@ def main():
     obs = env.render()
     obs = resize(obs).unsqueeze(0).to(device)
     steps = 0
+    ep = 0
     steps_all = []
     # return_ = 0
     # return_all = []
 
     for _ in range(10):
         while True:
-            action = select_actions(obs,
-                                    eps_start,eps_end,eps_decay,steps,policy_net)
-            action = action.to(device)
+            if ep > 21 or (ep < 20 and steps%4 == 0):
+                print(steps)
+                action = select_actions(obs,eps_start,eps_end,eps_decay,steps,policy_net)
+                action = action.to(device)
+
             reward = env.step_(action)
             obs_next = env.render()
             obs_next = resize(obs_next).unsqueeze(0).to(device)
@@ -185,6 +201,7 @@ def main():
             if reward == 1:
                 # return_all.append(return_)
                 # return_ = 0
+                ep += 1
                 steps = 0
                 steps_all.append(steps)
                 print(steps_all)
@@ -199,7 +216,7 @@ def main():
                 target_net.load_state_dict(policy_net.state_dict())
                 target_net.eval()
             for _ in range(memory.__len__()/batch_size):
-                optimize_model(memory, gamma, batch_size)
+                optimize_model(memory, gamma, batch_size,device)
 
 if __name__ == "__main__":
     main()
