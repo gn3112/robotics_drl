@@ -14,6 +14,10 @@ from environment import environment
 from PIL import Image
 import math
 import numpy as np
+import logz
+import inspect
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Replay_Buffer(object):
 #python maxlem buffer
@@ -81,9 +85,8 @@ def evaluation():
     # Reward over training steps
     return None
 
-def optimize_model(memory, gamma, batch_size, device):
+def optimize_model(policy_net,target_net, optimizer, memory, gamma, batch_size, device):
     transitions = memory.sample(batch_size)
-
     state_batch = []
     action_batch = []
     reward_batch =  []
@@ -96,17 +99,17 @@ def optimize_model(memory, gamma, batch_size, device):
         reward_batch.append(transition["r"])
         state_next_batch.append(transition["s'"])
 
-    state_batch = torch.tensor(state_batch)
-    action_batch = torch.tensor(action_batch)
-    reward_batch =  torch.tensor(reward_batch)
-    state_next_batch = torch.tensor(state_next_batch)
+    state_batch = torch.cat(state_batch,dim=0)
+    action_batch = torch.cat(action_batch,dim=0)
+    reward_batch =  torch.cat(reward_batch,dim=0)
+    state_next_batch = torch.cat(state_next_batch,dim=0)
 
     non_final_idx = []
     for idx, r in enumerate(reward_batch):
-        if r == 1:
+        if r != 1:
             non_final_idx.append(idx)
 
-    non_final_idx = torch.tensor(non_final_idx)
+    non_final_idx = torch.tensor(non_final_idx,dtype=torch.long)
     state_next_batch_nf = state_next_batch[non_final_idx]
 
     state_action_values = policy_net(state_batch).gather(1, action_batch)
@@ -123,8 +126,10 @@ def optimize_model(memory, gamma, batch_size, device):
     loss.backward()
     optimizer.step()
 
-def main():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def train(epoch, learning_rate, batch_size, gamma, eps_start, eps_end, eps_decay, policy_update, target_update, max_steps, buffer_size, logdir):
+    setup_logger(logdir, locals())
+
+
     env = environment()
     env.reset_target_position(random_=True)
     env.reset_robot_position(random_=False)
@@ -142,43 +147,23 @@ def main():
     target_net.load_state_dict(policy_net.state_dict())
     target_net.eval()
 
-    optimizer = optim.RMSprop(policy_net.parameters())
-    memory = Replay_Buffer(10000)
-
-    epoch = 4
-    batch_size = 128
-    gamma = 0.999
-    eps_start = 0.9
-    eps_end = 0.05
-    eps_decay = 100
-    target_update = 10
-
-    num_episodes = 500
-
-    # 1.Fill the replay buffer
-    # Take action
-    # Record s,a,r,s' in buffer
-    # 2. Once full, how much to feed and how many forward pass with the
-    # 3. Update policy network parameters
-    # 4. Refill the buffer
-    # 5. After some gradient step update target network
+    optimizer = optim.RMSprop(policy_net.parameters(), lr = learning_rate)
+    memory = Replay_Buffer(buffer_size)
 
     obs = env.render()
     obs = resize(obs).unsqueeze(0).to(device)
     steps = 0
     ep = 0
     steps_all = []
-    # return_ = 0
-    # return_all = []
 
-    for _ in range(10):
-        while True:
+    for update in range(policy_update):
+        while True: # Sample transitions
             if ep > 21 or (ep < 20 and steps%4 == 0):
-                print(steps)
                 action = select_actions(obs,eps_start,eps_end,eps_decay,steps,policy_net)
                 action = action.to(device)
 
             reward = env.step_(action)
+            reward = torch.tensor(reward,dtype=torch.float).view(-1,1)
             obs_next = env.render()
             obs_next = resize(obs_next).unsqueeze(0).to(device)
             transition = {'s': obs,
@@ -195,28 +180,82 @@ def main():
             obs = resize(obs).unsqueeze(0).to(device)
 
             if memory_state == 'full':
-                # Disregard last transition if incomplete or complete it
+                # TODO: Disregard last transition if incomplete or complete it
                 break
 
             if reward == 1:
                 # return_all.append(return_)
                 # return_ = 0
                 ep += 1
-                steps = 0
-                steps_all.append(steps)
-                print(steps_all)
+                steps_all.append(steps-sum(steps_all))
                 env.reset_target_position(random_=True)
                 env.reset_robot_position(random_=False)
-            elif steps == 3000:
-                steps = 0
-                env.reset_robot_position(random_=False)
+            elif steps == 1500:
+                env.reset_target_position(random_=True)
+                env.reset_robot_position(random_=True)
+
+        logz.log_tabular('Steps',np.average(steps_all))
+        logz.log_tabular('Update',update)
+        logz.dump_tabular()
 
         for _ in range(epoch):
             if epoch == 2: # update target network parameters
                 target_net.load_state_dict(policy_net.state_dict())
                 target_net.eval()
-            for _ in range(memory.__len__()/batch_size):
-                optimize_model(memory, gamma, batch_size,device)
+            for _ in range(memory.__len__()//batch_size):
+                optimize_model(policy_net, target_net, optimizer, memory, gamma, batch_size,device)
+
+        logz.save_pytorch_model(policy_net.state_dict())
+
+def setup_logger(logdir, locals_):
+    # Configure output directory for logging
+    logz.configure_output_dir(logdir)
+    # Log experimental parameters
+    args = inspect.getargspec(train)[0]
+    params = {k: locals_[k] if k in locals_ else None for k in args}
+    logz.save_hyperparams(params)
+
+
+def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-lr','--learning_rate',default=0.001,type=float,required=True)
+    parser.add_argument('--exp_name', required=True)
+    parser.add_argument('-bs','--batch_size',default=128,type=int)
+    parser.add_argument('-buffer_size',default=10000,type=int)
+    parser.add_argument('-ep','--epoch',default=5,type=int)
+    parser.add_argument('-policy_update',default=10,type=int)
+    parser.add_argument('-target_update',default=160,type=int,help='gradient step')
+    parser.add_argument('-max_steps',default=1200,type=int)
+    parser.add_argument('-gamma',default=0.9999,type=float)
+    parser.add_argument('-eps_start',default=0.9,type=float)
+    parser.add_argument('-eps_end',default=0.05,type=float)
+    parser.add_argument('-eps_decay',default=200,type=float)
+    parser.add_argument('-randL','--random_link',action='store_true')
+    parser.add_argument('-randT','--random_target',action='store_true')
+    parser.add_argument('-rpa','--repeat_actions',action='store_true')
+    args = parser.parse_args()
+
+    if not(os.path.exists('data')):
+        os.makedirs('data')
+    logdir = args.exp_name + '_' + time.strftime("%d-%m-%Y_%H-%M-%S")
+    logdir = os.path.join('data', logdir)
+    if not(os.path.exists(logdir)):
+        os.makedirs(logdir)
+
+    train(args.epoch,
+          args.learning_rate,
+          args.batch_size,
+          args.gamma,
+          args.eps_start,
+          args.eps_end,
+          args.eps_decay,
+          args.policy_update,
+          args.target_update,
+          args.max_steps,
+          args.buffer_size,
+          logdir)
+
 
 if __name__ == "__main__":
     main()
