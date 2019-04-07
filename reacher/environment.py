@@ -51,22 +51,27 @@ class environment(object):
             self.joint2.set_angle(joint2_pos + position_all[1])
 
         self.pr.step()
+        ee_pos = self.end_effector_pos()
+        # target_pos = self.target_position()
+        dist_ee_target = sqrt((ee_pos[0] - self.target_pos[0])**2 + \
+        (ee_pos[1] - self.target_pos[1])**2)
+        # self.pos_target = self.target.get_position()
+        # self.pos_end_effector = self.end_effector.get_position(relative_to=self.target)
+        # self.or_target = self.target.get_orientation()
+        # self.or_end_effector = self.end_effector.get_orientation(relative_to=self.target)
+        #
+        # self.dist_target = sqrt((self.pos_target[0])**2 + (self.pos_target[1])**2)
+        # self.dist_end_effector = sqrt((self.pos_end_effector[0])**2 + (self.pos_end_effector[1])**2)
 
-        self.pos_target = self.target.get_position()
-        self.pos_end_effector = self.end_effector.get_position(relative_to=self.target)
-        self.or_target = self.target.get_orientation()
-        self.or_end_effector = self.end_effector.get_orientation(relative_to=self.target)
-
-        self.dist_target = sqrt((self.pos_target[0])**2 + (self.pos_target[1])**2)
-        self.dist_end_effector = sqrt((self.pos_end_effector[0])**2 + (self.pos_end_effector[1])**2)
-
-        if self.dist_target == self.dist_end_effector and self.or_target == self.or_end_effector:
+        if dist_ee_target < 0.1:
+        # self.dist_target == self.dist_end_effector and self.or_target == self.or_end_effector:
             # +0.125>self.dist_end_effector>-0.125 and +2>self.or_end_effector>-2
             self.reached = 1
             reward = 1
             print('Target reached')
         else:
-            reward = -1
+            reward = -dist_ee_target
+            # reward = -1
 
         # obs = self.camera.capture_rgb()
 
@@ -74,7 +79,7 @@ class environment(object):
 
 
     def end_effector_pos(self):
-        return None
+        return self.end_effector.get_position()
 
     def target_position(self):
         return self.target.get_position()
@@ -95,6 +100,7 @@ class environment(object):
 
         self.target.set_position([x,y,0.125])
         self.pr.step(blocking=True)
+        self.target_pos = self.target_position()
 
     def reset_robot_position(self,random_=False,joint1_pos=0,joint2_pos=-0.6109):
         if random_ == True:
