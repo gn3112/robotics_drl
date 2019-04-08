@@ -6,8 +6,8 @@ from matplotlib import pyplot as plt
 import random
 
 class environment(object):
-    def __init__(self,position_control=True):
-        self.pr = PyRep(port=19997)
+    def __init__(self,position_control=True,port=19997):
+        self.pr = PyRep(port=port)
         self.pr.launch('reacher.ttt',headless=True)
         self.pr.connect(synchronous=True)
         self.pr.start()
