@@ -76,9 +76,9 @@ def select_actions(state,eps_start,eps_end,eps_decay,steps_done,policy_net):
     eps_threshold = eps_end + (eps_start - eps_end) * math.exp(-1. * steps_done / eps_decay)
     if sample > eps_threshold:
         policy_net.eval()
-        return policy_net(state).argmax(1)
+        return policy_net(state).argmax(1).view(1,-1), eps_threshold
     else:
-        return torch.tensor([[random.randrange(9)]], dtype=torch.long)
+        return torch.tensor([[random.randrange(9)]], dtype=torch.long), eps_threshold
 
 def evaluation():
     # Reward to achieve goals
@@ -119,14 +119,17 @@ def optimize_model(policy_net,target_net, optimizer, memory, gamma, batch_size, 
 
     next_state_values = torch.zeros(batch_size,device=device)
     next_state_values[non_final_idx] = target_net(state_next_batch_nf).max(1)[0]
-    expected_state_action_values = (next_state_values * gamma) + reward_batch
+    expected_state_action_values = (next_state_values * gamma) + reward_batch.to(device)
 
     loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
 
-def train(epoch, learning_rate, batch_size, gamma, eps_start, eps_end, eps_decay, policy_update, target_update, max_steps, buffer_size, logdir):
+def train(epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
+          eps_decay, policy_update, target_update, max_steps, buffer_size,
+          random_link, random_target, repeat_actions, logdir):
+
     setup_logger(logdir, locals())
 
 
@@ -139,7 +142,7 @@ def train(epoch, learning_rate, batch_size, gamma, eps_start, eps_end, eps_decay
                         T.Resize(64, interpolation=Image.BILINEAR),
                         T.ToTensor()])
     img = env.render()
-    img = torch.from_numpy(img)
+    img = torch.from_numpy(img.copy())
     img_height, img_width, _ = img.shape
 
     policy_net = DQN(img_height,img_width).to(device)
@@ -155,11 +158,11 @@ def train(epoch, learning_rate, batch_size, gamma, eps_start, eps_end, eps_decay
     steps = 0
     ep = 0
     steps_all = []
-
+    reward_avg = 0
     for update in range(policy_update):
         while True: # Sample transitions
             if ep > 21 or (ep < 20 and steps%4 == 0):
-                action = select_actions(obs,eps_start,eps_end,eps_decay,steps,policy_net)
+                action, eps_threshold = select_actions(obs,eps_start,eps_end,eps_decay,steps,policy_net)
                 action = action.to(device)
 
             reward = env.step_(action)
@@ -183,28 +186,37 @@ def train(epoch, learning_rate, batch_size, gamma, eps_start, eps_end, eps_decay
                 # TODO: Disregard last transition if incomplete or complete it
                 break
 
-            if reward == 1:
+            if reward == 100:
                 # return_all.append(return_)
                 # return_ = 0
                 ep += 1
                 steps_all.append(steps-sum(steps_all))
-                env.reset_target_position(random_=True)
-                env.reset_robot_position(random_=False)
+                env.reset_target_position(random_=random_target)
+                env.reset_robot_position(random_=random_link)
             elif steps == 1500:
-                env.reset_target_position(random_=True)
-                env.reset_robot_position(random_=True)
+                steps_all.append(steps-sum(steps_all))
+                env.reset_target_position(random_=False)
+                env.reset_robot_position(random_=False)
 
-        logz.log_tabular('Steps',np.average(steps_all))
+            reward_avg += reward
+            reward_avg /= steps
+            # if steps%50 == 0:
+            #     print('--- Epsilon threshold: ' + str(eps_threshold) + ' Averaged Return: ' + str(reward_avg) + ' ---')
+
+        logz.log_tabular('Cumulative Averaged Steps',np.average(steps_all))
+        logz.log_tabular('Cumulative Averaged Returns',reward_avg)
         logz.log_tabular('Update',update)
+        logz.log_tabular('Number of episodes',len(steps_all))
         logz.dump_tabular()
 
         for _ in range(epoch):
-            if epoch == 2: # update target network parameters
+            if epoch == 4: # update target network parameters
                 target_net.load_state_dict(policy_net.state_dict())
                 target_net.eval()
             for _ in range(memory.__len__()//batch_size):
                 optimize_model(policy_net, target_net, optimizer, memory, gamma, batch_size,device)
 
+        memory = Replay_Buffer(buffer_size)
         logz.save_pytorch_model(policy_net.state_dict())
 
 def setup_logger(logdir, locals_):
@@ -219,18 +231,18 @@ def setup_logger(logdir, locals_):
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('-lr','--learning_rate',default=0.001,type=float,required=True)
+    parser.add_argument('-lr','--learning_rate',default=0.0001,type=float)
     parser.add_argument('--exp_name', required=True)
     parser.add_argument('-bs','--batch_size',default=128,type=int)
-    parser.add_argument('-buffer_size',default=10000,type=int)
-    parser.add_argument('-ep','--epoch',default=5,type=int)
-    parser.add_argument('-policy_update',default=10,type=int)
+    parser.add_argument('-buffer_size',default=30000,type=int)
+    parser.add_argument('-ep','--epoch',default=8,type=int)
+    parser.add_argument('-policy_update',default=12,type=int)
     parser.add_argument('-target_update',default=160,type=int,help='gradient step')
     parser.add_argument('-max_steps',default=1200,type=int)
     parser.add_argument('-gamma',default=0.9999,type=float)
     parser.add_argument('-eps_start',default=0.9,type=float)
-    parser.add_argument('-eps_end',default=0.05,type=float)
-    parser.add_argument('-eps_decay',default=200,type=float)
+    parser.add_argument('-eps_end',default=0.1,type=float)
+    parser.add_argument('-eps_decay',default=10000,type=float)
     parser.add_argument('-randL','--random_link',action='store_true')
     parser.add_argument('-randT','--random_target',action='store_true')
     parser.add_argument('-rpa','--repeat_actions',action='store_true')
@@ -254,6 +266,9 @@ def main():
           args.target_update,
           args.max_steps,
           args.buffer_size,
+          args.random_link,
+          args.random_target,
+          args.repeat_actions,
           logdir)
 
 
