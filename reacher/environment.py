@@ -1,13 +1,14 @@
 " Define an environment and build utilities to get state, reward, action..."
 from pyrep_legacy import PyRep
 import vrep
-from math import sqrt, pi
+from math import sqrt, pi, exp
 from matplotlib import pyplot as plt
 import random
 
 class environment(object):
     def __init__(self,position_control=True):
         self.pr = PyRep(port=19997)
+        self.pr.launch('reacher.ttt',headless=True)
         self.pr.connect(synchronous=True)
         self.pr.start()
 
@@ -21,7 +22,7 @@ class environment(object):
         self.reacher = self.pr.get_object('reacher')
         self.camera = self.pr.get_camera('Vision_sensor')
 
-        self.increment = 0.5*pi/180 # to radians
+        self.increment = 2*pi/180 # to radians
         self.action_all = [[self.increment,self.increment],
                       [-self.increment,-self.increment],
                       [0,self.increment],
@@ -67,10 +68,10 @@ class environment(object):
         # self.dist_target == self.dist_end_effector and self.or_target == self.or_end_effector:
             # +0.125>self.dist_end_effector>-0.125 and +2>self.or_end_effector>-2
             self.reached = 1
-            reward = 1
+            reward = 100
             print('Target reached')
         else:
-            reward = -dist_ee_target
+            reward = exp(-0.25*dist_ee_target)
             # reward = -1
 
         # obs = self.camera.capture_rgb()
