@@ -18,7 +18,6 @@ import logz
 import inspect
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-env = environment()
 
 class Replay_Buffer(object):
 #python maxlem buffer
@@ -73,7 +72,7 @@ class DQN(nn.Module):
         return self.fc1(x.view(x.size(0),-1))
 
 class evaluation(object):
-    def __init__(self,n_states=5):
+    def __init__(self, env, n_states=5):
         self.states_eval = []
         self.resize = T.Compose([T.ToPILImage(),
                                  T.Grayscale(num_output_channels=1),
@@ -91,7 +90,7 @@ class evaluation(object):
         for _, img in enumerate(self.states_eval):
             qvalues += policy_net(img).max(1)[0]
 
-        return qvalues/len(self.states_eval)
+        return (qvalues/len(self.states_eval))[0].item()
 
 def select_actions(state,eps_start,eps_end,eps_decay,steps_done,policy_net):
     sample = random.random()
@@ -145,11 +144,13 @@ def optimize_model(policy_net,target_net, optimizer, memory, gamma, batch_size):
 
 def train(epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
           eps_decay, policy_update, target_update, max_steps, buffer_size,
-          random_link, random_target, repeat_actions, logdir):
+          random_link, random_target, repeat_actions, port, logdir):
 
     setup_logger(logdir, locals())
-
-    eval_policy = evaluation()
+    
+    env = environment(port=port)
+    
+    eval_policy = evaluation(env)
 
     env.reset_target_position(random_=True)
     env.reset_robot_position(random_=False)
@@ -288,6 +289,7 @@ def main():
     parser.add_argument('-randL','--random_link',action='store_true')
     parser.add_argument('-randT','--random_target',action='store_true')
     parser.add_argument('-rpa','--repeat_actions',action='store_true')
+    parser.add_argument('--port',required=True,type=int)
     args = parser.parse_args()
 
     if not(os.path.exists('data')):
@@ -296,6 +298,7 @@ def main():
     logdir = os.path.join('data', logdir)
     if not(os.path.exists(logdir)):
         os.makedirs(logdir)
+
 
     train(args.epoch,
           args.learning_rate,
@@ -311,6 +314,7 @@ def main():
           args.random_link,
           args.random_target,
           args.repeat_actions,
+          args.port,
           logdir)
 
 
