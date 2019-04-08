@@ -18,6 +18,7 @@ import logz
 import inspect
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+env = environment()
 
 class Replay_Buffer(object):
 #python maxlem buffer
@@ -71,6 +72,27 @@ class DQN(nn.Module):
         x = F.relu(self.bn3(self.conv3(x)))
         return self.fc1(x.view(x.size(0),-1))
 
+class evaluation(object):
+    def __init__(n_states=5):
+        self.states_eval = []
+        self.resize = T.Compose([T.ToPILImage(),
+                                 T.Grayscale(num_output_channels=1),
+                                 T.Resize(64, interpolation=Image.BILINEAR),
+                                 T.ToTensor()])
+        for _ in range(n_states):
+            env.reset_target_position(random_=True)
+            env.reset_robot_position(random_=False)
+            img = self.resize(env.render()).unsqueeze(0).to(device)
+            self.states_eval.append(img)
+
+    def get_qvalue(policy_net):
+        policy_net.eval()
+        qvalues = 0
+        for _, img in enumerate(self.states_eval):
+            qvalues += policy_net(torch.tensor(img).view(-1,)).max(1)[0]
+
+        return qvalues/len(self.states_eval)
+
 def select_actions(state,eps_start,eps_end,eps_decay,steps_done,policy_net):
     sample = random.random()
     eps_threshold = eps_end + (eps_start - eps_end) * math.exp(-1. * steps_done / eps_decay)
@@ -79,11 +101,6 @@ def select_actions(state,eps_start,eps_end,eps_decay,steps_done,policy_net):
         return policy_net(state).argmax(1).view(1,-1), eps_threshold
     else:
         return torch.tensor([[random.randrange(9)]], dtype=torch.long), eps_threshold
-
-def evaluation():
-    # Reward to achieve goals
-    # Reward over training steps
-    return None
 
 def optimize_model(policy_net,target_net, optimizer, memory, gamma, batch_size, device):
     transitions = memory.sample(batch_size)
@@ -132,8 +149,8 @@ def train(epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
 
     setup_logger(logdir, locals())
 
+    eval_policy = evaluation()
 
-    env = environment()
     env.reset_target_position(random_=True)
     env.reset_robot_position(random_=False)
 
@@ -150,19 +167,27 @@ def train(epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
     target_net.load_state_dict(policy_net.state_dict())
     target_net.eval()
 
+    test = eval_policy.get_qvalue(policy_net)
+    print(test)
+    
     optimizer = optim.RMSprop(policy_net.parameters(), lr = learning_rate)
     memory = Replay_Buffer(buffer_size)
 
     obs = env.render()
     obs = resize(obs).unsqueeze(0).to(device)
-    steps = 0
-    ep = 0
+
+    steps_ep = 0
+    rewards_ep = 0
+    successes = 0
     steps_all = []
-    reward_avg = 0
+    rewards_all = []
+
     for update in range(policy_update):
+        start_time = time.time()
         while True: # Sample transitions
             if ep > 21 or (ep < 20 and steps%4 == 0):
-                action, eps_threshold = select_actions(obs,eps_start,eps_end,eps_decay,steps,policy_net)
+                action, eps_threshold = select_actions(obs, eps_start, eps_end,
+                                                       eps_decay, sum(steps_all), policy_net)
                 action = action.to(device)
 
             reward = env.step_(action)
@@ -174,8 +199,8 @@ def train(epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
                           'r': reward,
                           "s'": obs_next
                           }
-            steps += 1
-            # return_ += reward
+            steps_ep += 1
+            rewards_ep += reward
 
             memory_state = memory.push(transition)
 
@@ -187,26 +212,34 @@ def train(epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
                 break
 
             if reward == 100:
-                # return_all.append(return_)
-                # return_ = 0
-                ep += 1
-                steps_all.append(steps-sum(steps_all))
+                rewards_all_avg.append(rewards_ep/steps_ep)
+                steps_all.append(steps_ep)
+                successes += 1
+                rewards_ep = 0
+                steps_ep = 0
+
                 env.reset_target_position(random_=random_target)
                 env.reset_robot_position(random_=random_link)
-            elif steps == 1500:
-                steps_all.append(steps-sum(steps_all))
-                env.reset_target_position(random_=False)
-                env.reset_robot_position(random_=False)
 
-            reward_avg += reward
-            reward_avg /= steps
+            elif steps == 1500:
+                rewards_all.append(rewards_ep)
+                steps_all.append(steps_ep)
+                rewards_ep = 0
+                steps_ep = 0
+
+                env.reset_target_position(random_=random_target)
+                env.reset_robot_position(random_=random_link)
+
             # if steps%50 == 0:
             #     print('--- Epsilon threshold: ' + str(eps_threshold) + ' Averaged Return: ' + str(reward_avg) + ' ---')
+        end_time = time.time()
 
-        logz.log_tabular('Cumulative Averaged Steps',np.average(steps_all))
-        logz.log_tabular('Cumulative Averaged Returns',reward_avg)
-        logz.log_tabular('Update',update)
+        logz.log_tabular('Averaged Steps',np.around(np.average(steps_all),decimals=0))
+        logz.log_tabular('Averaged Rewards',np.around(np.average(rewards_all),decimals=2))
+        logz.log_tabular('Policy update',update)
         logz.log_tabular('Number of episodes',len(steps_all))
+        logz.log_tabular('Sampling time (s)',(end_time-start_time))
+        logz.log_tabular('Epsilon threshold', eps_threshold)
         logz.dump_tabular()
 
         for _ in range(epoch):
