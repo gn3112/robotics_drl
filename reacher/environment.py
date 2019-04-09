@@ -13,9 +13,8 @@ class environment(object):
 
         self.reached = 0
         self.position_control = position_control
-
         self.target = self.pr.get_object('target')
-        self.end_effector = self.pr.get_object('end_effector')
+        self.end_effector = self.pr.get_dummy('end_effector')
         self.joint1 = self.pr.get_joint('link_1')
         self.joint2 = self.pr.get_joint('link_2')
         self.reacher = self.pr.get_object('reacher')

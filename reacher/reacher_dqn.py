@@ -1,4 +1,4 @@
-from pyrep_legacy import PyRep
+from pyrep import PyRep
 import vrep
 import os
 from subprocess import Popen
