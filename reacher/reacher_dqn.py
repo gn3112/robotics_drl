@@ -142,7 +142,7 @@ def optimize_model(policy_net,target_net, optimizer, memory, gamma, batch_size):
     loss.backward()
     optimizer.step()
 
-def train(epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
+def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
           eps_decay, policy_update, target_update, max_steps, buffer_size,
           random_link, random_target, repeat_actions, port, logdir):
 
@@ -235,7 +235,7 @@ def train(epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
         end_time = time.time()
 
         n_iter = memory.__len__()//batch_size
-        for _ in range(epoch):
+        for epoch in range(n_epoch):
             if epoch == target_update: # update target network parameters
                 target_net.load_state_dict(policy_net.state_dict())
                 target_net.eval()
