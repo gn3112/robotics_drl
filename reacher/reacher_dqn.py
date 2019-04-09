@@ -1,5 +1,4 @@
 from pyrep import PyRep
-import vrep
 import os
 from subprocess import Popen
 from matplotlib import pyplot as plt
@@ -81,7 +80,7 @@ class evaluation(object):
         for _ in range(n_states):
             env.reset_target_position(random_=True)
             env.reset_robot_position(random_=False)
-            img = self.resize(env.render()).unsqueeze(0).to(device)
+            img = self.resize(np.uint8(env.render())).unsqueeze(0).to(device)
             self.states_eval.append(img)
 
     def get_qvalue(self,policy_net):
@@ -172,7 +171,7 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
     memory = Replay_Buffer(buffer_size)
 
     obs = env.render()
-    obs = resize(obs).unsqueeze(0).to(device)
+    obs = resize(np.uint8(obs)).unsqueeze(0).to(device)
 
     steps_ep = 0
     rewards_ep = 0
@@ -194,7 +193,7 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
             reward = env.step_(action)
             reward = torch.tensor(reward,dtype=torch.float).view(-1,1)
             obs_next = env.render()
-            obs_next = resize(obs_next).unsqueeze(0).to(device)
+            obs_next = resize(np.uint8(obs_next)).unsqueeze(0).to(device)
             transition = {'s': obs,
                           'a': action,
                           'r': reward,
@@ -206,7 +205,7 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
             memory_state = memory.push(transition)
 
             obs = env.render()
-            obs = resize(obs).unsqueeze(0).to(device)
+            obs = resize(np.uint8(obs)).unsqueeze(0).to(device)
             if memory_state == 'full':
                 # TODO: Disregard last transition if incomplete or complete it
                 break
@@ -258,8 +257,8 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
                     logz.dump_tabular()
 
         memory = Replay_Buffer(buffer_size)
-        logz.save_pytorch_model(policy_net.state_dict())
-
+    logz.save_pytorch_model(policy_net.state_dict())
+    env.terminate()
 
 
 def setup_logger(logdir, locals_):
@@ -314,7 +313,7 @@ def main():
           args.random_target,
           args.repeat_actions,
           logdir)
-
+    
 
 if __name__ == "__main__":
     main()
