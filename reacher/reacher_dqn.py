@@ -235,7 +235,7 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
 
         n_iter = memory.__len__()//batch_size
         for epoch in range(n_epoch):
-            if epoch == target_update: # update target network parameters
+            if grad_upd % target_update == 0: # update target network parameters
                 target_net.load_state_dict(policy_net.state_dict())
                 target_net.eval()
                 target_upd += 1
@@ -279,7 +279,7 @@ def main():
     parser.add_argument('-buffer_size',default=30000,type=int)
     parser.add_argument('-ep','--epoch',default=8,type=int)
     parser.add_argument('-policy_update',default=12,type=int)
-    parser.add_argument('-target_update',default=4,type=int,help='every n epoch')
+    parser.add_argument('-target_update',default=1500,type=int,help='every n gradient steps')
     parser.add_argument('-max_steps',default=1200,type=int)
     parser.add_argument('-gamma',default=0.9999,type=float)
     parser.add_argument('-eps_start',default=0.9,type=float)
