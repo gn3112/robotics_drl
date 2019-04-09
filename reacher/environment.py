@@ -1,14 +1,15 @@
 " Define an environment and build utilities to get state, reward, action..."
 from pyrep import PyRep
-import vrep
 from math import sqrt, pi, exp
 from matplotlib import pyplot as plt
 import random
+from os.path import dirname, join, abspath
 
 class environment(object):
     def __init__(self,position_control=True):
         self.pr = PyRep()
-        self.pr.launch('reacher.ttt',headless=True)
+        SCENE_FILE = join(dirname(abspath(__file__)), 'reacher.ttt')
+        self.pr.launch(SCENE_FILE,headless=True)
         self.pr.start()
 
         self.reached = 0
