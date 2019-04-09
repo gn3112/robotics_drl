@@ -72,7 +72,7 @@ class DQN(nn.Module):
         return self.fc1(x.view(x.size(0),-1))
 
 class evaluation(object):
-    def __init__(self, env, n_states=5):
+    def __init__(self, env, n_states=10):
         self.states_eval = []
         self.resize = T.Compose([T.ToPILImage(),
                                  T.Grayscale(num_output_channels=1),
@@ -144,12 +144,12 @@ def optimize_model(policy_net,target_net, optimizer, memory, gamma, batch_size):
 
 def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
           eps_decay, policy_update, target_update, max_steps, buffer_size,
-          random_link, random_target, repeat_actions, port, logdir):
+          random_link, random_target, repeat_actions, logdir):
 
     setup_logger(logdir, locals())
-    
-    env = environment(port=port)
-    
+
+    env = environment()
+
     eval_policy = evaluation(env)
 
     env.reset_target_position(random_=True)
@@ -177,14 +177,14 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
     steps_ep = 0
     rewards_ep = 0
     successes = 0
-    steps_all = []
-    rewards_all = []
 
     target_upd = 0
     grad_upd = 0
 
     for update in range(policy_update):
         start_time = time.time()
+        steps_all = []
+        rewards_all = []
         while True: # Sample transitions
             if len(steps_all) > 21 or (len(steps_all) < 20 and steps_ep%4 == 0):
                 action, eps_threshold = select_actions(obs, eps_start, eps_end,
@@ -247,7 +247,7 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
                     qvalue_eval = eval_policy.get_qvalue(policy_net)
                     logz.log_tabular('Averaged Steps',np.around(np.average(steps_all),decimals=0))
                     logz.log_tabular('Averaged Rewards',np.around(np.average(rewards_all),decimals=2))
-                    logz.log_tabular('Successes',successes)
+                    logz.log_tabular('Cumulative Successes',successes)
                     logz.log_tabular('Policy update',update)
                     logz.log_tabular('Number of episodes',len(steps_all))
                     logz.log_tabular('Sampling time (s)',(end_time-start_time))
@@ -256,10 +256,10 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
                     logz.log_tabular('Updates target network', target_upd)
                     logz.log_tabular('Average q-value evaluation', qvalue_eval)
                     logz.dump_tabular()
-        
+
         memory = Replay_Buffer(buffer_size)
         logz.save_pytorch_model(policy_net.state_dict())
-        
+
 
 
 def setup_logger(logdir, locals_):
@@ -289,7 +289,6 @@ def main():
     parser.add_argument('-randL','--random_link',action='store_true')
     parser.add_argument('-randT','--random_target',action='store_true')
     parser.add_argument('-rpa','--repeat_actions',action='store_true')
-    parser.add_argument('--port',required=True,type=int)
     args = parser.parse_args()
 
     if not(os.path.exists('data')):
@@ -314,7 +313,6 @@ def main():
           args.random_link,
           args.random_target,
           args.repeat_actions,
-          args.port,
           logdir)
 
 
