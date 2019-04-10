@@ -121,7 +121,7 @@ def optimize_model(policy_net,target_net, optimizer, memory, gamma, batch_size):
 
     non_final_idx = []
     for idx, r in enumerate(reward_batch):
-        if r != 1:
+        if r != 100:
             non_final_idx.append(idx)
 
     non_final_idx = torch.tensor(non_final_idx,dtype=torch.long)
@@ -152,7 +152,7 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
     eval_policy = evaluation(env)
 
     env.reset_target_position(random_=True)
-    env.reset_robot_position(random_=False)
+    env.reset_robot_position(random_=True)
 
     resize = T.Compose([T.ToPILImage(),
                         T.Grayscale(num_output_channels=1),
@@ -185,10 +185,14 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
         steps_all = []
         rewards_all = []
         while True: # Sample transitions
-            if len(steps_all) > 21 or (len(steps_all) < 20 and steps_ep%4 == 0):
-                action, eps_threshold = select_actions(obs, eps_start, eps_end,
+           # if len(steps_all) > 21 or (len(steps_all) < 20 and steps_ep%4 == 0):
+                #action, eps_threshold = select_actions(obs, eps_start, eps_end,
+                #                                      eps_decay, steps_train, policy_net)
+                #action = action.to(device)
+                
+            action, eps_threshold = select_actions(obs, eps_start, eps_end,
                                                        eps_decay, steps_train, policy_net)
-                action = action.to(device)
+            action = action.to(device)
 
             reward = env.step_(action)
             reward = torch.tensor(reward,dtype=torch.float).view(-1,1)
