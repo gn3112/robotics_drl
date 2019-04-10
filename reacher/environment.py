@@ -47,8 +47,8 @@ class environment(object):
             joints_pos = self.get_joints_pos()
             joint1_pos = joints_pos[0]
             joint2_pos = joints_pos[1]
-            self.joint1.set_joint_target_position(joint1_pos + position_all[0]) # radians
-            self.joint2.set_joint_target_position(joint2_pos + position_all[1])
+            self.joint1.set_joint_position(joint1_pos + position_all[0], allow_force_mode=False) # radians
+            self.joint2.set_joint_position(joint2_pos + position_all[1], allow_force_mode=False)
 
         self.pr.step()
         ee_pos = self.end_effector_pos()
@@ -62,7 +62,6 @@ class environment(object):
         #
         # self.dist_target = sqrt((self.pos_target[0])**2 + (self.pos_target[1])**2)
         # self.dist_end_effector = sqrt((self.pos_end_effector[0])**2 + (self.pos_end_effector[1])**2)
-
         if dist_ee_target < 0.1:
         # self.dist_target == self.dist_end_effector and self.or_target == self.or_end_effector:
             # +0.125>self.dist_end_effector>-0.125 and +2>self.or_end_effector>-2
