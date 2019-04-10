@@ -179,7 +179,7 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
 
     target_upd = 0
     grad_upd = 0
-
+    steps_train = 0
     for update in range(policy_update):
         start_time = time.time()
         steps_all = []
@@ -187,7 +187,7 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
         while True: # Sample transitions
             if len(steps_all) > 21 or (len(steps_all) < 20 and steps_ep%4 == 0):
                 action, eps_threshold = select_actions(obs, eps_start, eps_end,
-                                                       eps_decay, sum(steps_all), policy_net)
+                                                       eps_decay, steps_train, policy_net)
                 action = action.to(device)
 
             reward = env.step_(action)
@@ -200,6 +200,7 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
                           "s'": obs_next
                           }
             steps_ep += 1
+            steps_train += 1
             rewards_ep += reward
 
             memory_state = memory.push(transition)
@@ -235,10 +236,7 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
 
         n_iter = memory.__len__()//batch_size
         for epoch in range(n_epoch):
-            if grad_upd % target_update == 0: # update target network parameters
-                target_net.load_state_dict(policy_net.state_dict())
-                target_net.eval()
-                target_upd += 1
+    
             for iter in range(n_iter):
                 grad_upd += 1
                 optimize_model(policy_net, target_net, optimizer, memory, gamma, batch_size)
@@ -255,8 +253,14 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
                     logz.log_tabular('Updates target network', target_upd)
                     logz.log_tabular('Average q-value evaluation', qvalue_eval)
                     logz.dump_tabular()
-
+            
+                if grad_upd % target_update == 0: # update target network parameters
+                    target_net.load_state_dict(policy_net.state_dict())
+                    target_net.eval()
+                    target_upd += 1
+    
         memory = Replay_Buffer(buffer_size)
+    
     logz.save_pytorch_model(policy_net.state_dict())
     env.terminate()
 
