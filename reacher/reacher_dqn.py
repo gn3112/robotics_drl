@@ -15,7 +15,7 @@ import math
 import numpy as np
 import logz
 import inspect
-from communications import deque
+from collections import deque
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -26,7 +26,7 @@ class Replay_Buffer(object):
 
     def __init__(self,capacity):
         self.capacity = capacity
-        self.memory = deque([],maxlen=self.capacity)}
+        self.memory = deque([],maxlen=self.capacity)
 
     def push(self,transition):
         if self.__len__() == self.capacity:
@@ -146,8 +146,8 @@ def optimize_model(policy_net,target_net, optimizer, memory, gamma, batch_size):
     loss.backward()
     optimizer.step()
 
-def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
-          eps_decay, policy_update, target_update, max_steps, buffer_size,
+def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
+          eps_decay, target_update, max_steps, buffer_size,
           random_link, random_target, repeat_actions, logdir):
 
     setup_logger(logdir, locals())
@@ -157,7 +157,7 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
     eval_policy = evaluation(env)
 
     env.reset_target_position(random_=True)
-    env.reset_robot_position(random_=True)
+    env.reset_robot_position(random_=False)
 
     resize = T.Compose([T.ToPILImage(),
                         T.Grayscale(num_output_channels=1),
@@ -172,7 +172,7 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
     target_net.load_state_dict(policy_net.state_dict())
     target_net.eval()
 
-    optimizer = optim.RMSprop(policy_net.parameters(), lr = learning_rate)
+    optimizer = optim.Adam(policy_net.parameters(), lr = learning_rate)
     memory = Replay_Buffer(buffer_size)
 
     obs = env.render()
@@ -193,7 +193,7 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
         steps_ep = 0
         steps_all = []
         rewards_all = []
-
+        sampling_time = 0
         start_time = time.time()
         while True:
             action, eps_threshold = select_actions(obs, eps_start, eps_end,
@@ -218,42 +218,49 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
             obs = env.render()
             obs = resize(np.uint8(obs)).unsqueeze(0).to(device)
 
-            if done:
+            if done==True:
                 rewards_all.append(rewards_ep/steps_ep)
                 steps_all.append(steps_ep)
                 successes += 1
+                env.reset_target_position(random_=random_target)
+                env.reset_robot_position(random_=random_link)
                 break
 
             elif steps_ep == max_steps:
                 rewards_all.append(rewards_ep)
                 steps_all.append(steps_ep)
+                env.reset_target_position(random_=random_target)
+                env.reset_robot_position(random_=random_link)
                 break
 
-            end_time = time.time()
             status = optimize_model(policy_net, target_net, optimizer, memory, gamma, batch_size)
             if status != False:
                 grad_upd += 1
-
-            if ep % 10 == 0:
-                qvalue_eval = eval_policy.get_qvalue(policy_net)
-                logz.log_tabular('Averaged Steps',np.around(np.average(steps_all),decimals=0)) # last 10 episodes
-                logz.log_tabular('Averaged Rewards',np.around(np.average(rewards_all),decimals=2))
-                logz.log_tabular('Cumulative Successes',successes)
-                logz.log_tabular('Number of episodes',ep+1)
-                logz.log_tabular('Sampling time (s)',(end_time-start_time))
-                logz.log_tabular('Epsilon threshold', eps_threshold)
-                logz.log_tabular('Gradient update', grad_upd )
-                logz.log_tabular('Updates target network', target_upd)
-                logz.log_tabular('Average q-value evaluation', qvalue_eval)
-                logz.dump_tabular()
-
-                steps_all = []
-                rewards_all = []
 
             if grad_upd % target_update == 0: # update target network parameters
                 target_net.load_state_dict(policy_net.state_dict())
                 target_net.eval()
                 target_upd += 1
+            
+        end_time = time.time()
+        sampling_time += end_time-start_time
+        sampling_time /= ep            
+
+        if ep % 5 == 0:
+            qvalue_eval = eval_policy.get_qvalue(policy_net)
+            logz.log_tabular('Averaged Steps',np.around(np.average(steps_all),decimals=0)) # last 10 episodes
+            logz.log_tabular('Averaged Rewards',np.around(np.average(rewards_all),decimals=2))
+            logz.log_tabular('Cumulative Successes',successes)
+            logz.log_tabular('Number of episodes',ep)
+            logz.log_tabular('Sampling time (s)', sampling_time)
+            logz.log_tabular('Epsilon threshold', eps_threshold)
+            logz.log_tabular('Gradient update', grad_upd )
+            logz.log_tabular('Updates target network', target_upd)
+            logz.log_tabular('Average q-value evaluation', qvalue_eval)
+            logz.dump_tabular()
+            steps_all = []
+            rewards_all = []
+
 
     logz.save_pytorch_model(policy_net.state_dict())
     env.terminate()
@@ -363,14 +370,13 @@ def main():
     parser.add_argument('--exp_name', required=True)
     parser.add_argument('-bs','--batch_size',default=128,type=int)
     parser.add_argument('-buffer_size',default=30000,type=int)
-    parser.add_argument('-ep','--epoch',default=8,type=int)
-    parser.add_argument('-policy_update',default=12,type=int)
+    parser.add_argument('-ep','--episodes',default=300,type=int)
     parser.add_argument('-target_update',default=1500,type=int,help='every n gradient steps')
-    parser.add_argument('-max_steps',default=1200,type=int)
+    parser.add_argument('-max_steps',default=1500,type=int)
     parser.add_argument('-gamma',default=0.9999,type=float)
     parser.add_argument('-eps_start',default=0.9,type=float)
     parser.add_argument('-eps_end',default=0.1,type=float)
-    parser.add_argument('-eps_decay',default=10000,type=float)
+    parser.add_argument('-eps_decay',default=40000,type=float)
     parser.add_argument('-randL','--random_link',action='store_true')
     parser.add_argument('-randT','--random_target',action='store_true')
     parser.add_argument('-rpa','--repeat_actions',action='store_true')
@@ -384,14 +390,13 @@ def main():
         os.makedirs(logdir)
 
 
-    train(args.epoch,
+    train(args.episodes,
           args.learning_rate,
           args.batch_size,
           args.gamma,
           args.eps_start,
           args.eps_end,
           args.eps_decay,
-          args.policy_update,
           args.target_update,
           args.max_steps,
           args.buffer_size,

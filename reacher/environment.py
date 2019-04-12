@@ -102,6 +102,7 @@ class environment(object):
         self.target.set_position([x,y,0.125])
         self.pr.step()
         self.target_pos = self.target_position()
+        self.done = False
 
     def reset_robot_position(self,random_=False,joint1_pos=0,joint2_pos=-0.6109):
         if random_ == True:
