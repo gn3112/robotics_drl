@@ -13,6 +13,7 @@ class environment(object):
         self.pr.start()
 
         self.reached = 0
+        self.done = False
         self.position_control = position_control
         self.target = self.pr.get_object('target')
         self.end_effector = self.pr.get_dummy('end_effector')
@@ -66,7 +67,8 @@ class environment(object):
         # self.dist_target == self.dist_end_effector and self.or_target == self.or_end_effector:
             # +0.125>self.dist_end_effector>-0.125 and +2>self.or_end_effector>-2
             self.reached = 1
-            reward = 100
+            reward = 1000
+            self.done = True
             print('Target reached')
         else:
             reward = exp(-1.5*dist_ee_target)
@@ -74,7 +76,7 @@ class environment(object):
 
         # obs = self.camera.capture_rgb()
 
-        return reward
+        return reward, self.done
 
 
     def end_effector_pos(self):

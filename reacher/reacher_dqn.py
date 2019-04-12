@@ -15,19 +15,18 @@ import math
 import numpy as np
 import logz
 import inspect
+from communications import deque
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Replay_Buffer(object):
-#python maxlem buffer
 # Transition: state, action, reward, next state
 # List of of dim N x 4 with len() < capacity
 # Dictionnary
 
     def __init__(self,capacity):
         self.capacity = capacity
-        self.memory = []
-        self.position = 0
+        self.memory = deque([],maxlen=self.capacity)}
 
     def push(self,transition):
         if self.__len__() == self.capacity:
@@ -35,9 +34,12 @@ class Replay_Buffer(object):
         else:
             if len(transition) != 4:
                 raise RunTimeError('Your Transition is incomplete')
+
             self.memory.append(transition)
-            self.position += 1 # Necessary ?
             return 'free'
+
+    def clear_(self):
+        self.memory.clear() # len() = 0
 
     def sample(self,batch_size):
         return random.sample(self.memory, batch_size)
@@ -101,6 +103,9 @@ def select_actions(state,eps_start,eps_end,eps_decay,steps_done,policy_net):
         return torch.tensor([[random.randrange(9)]], dtype=torch.long), eps_threshold
 
 def optimize_model(policy_net,target_net, optimizer, memory, gamma, batch_size):
+    if memory.__len__() < batch_size:
+        return False
+
     transitions = memory.sample(batch_size)
     state_batch = []
     action_batch = []
@@ -121,7 +126,7 @@ def optimize_model(policy_net,target_net, optimizer, memory, gamma, batch_size):
 
     non_final_idx = []
     for idx, r in enumerate(reward_batch):
-        if r != 100:
+        if r != 1000:
             non_final_idx.append(idx)
 
     non_final_idx = torch.tensor(non_final_idx,dtype=torch.long)
@@ -180,21 +185,22 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
     target_upd = 0
     grad_upd = 0
     steps_train = 0
-    for update in range(policy_update):
-        start_time = time.time()
+
+    for ep in range(1,episodes+1):
+        env.reset_target_position(random_=random_target)
+        env.reset_robot_position(random_=random_link)
+        rewards_ep = 0
+        steps_ep = 0
         steps_all = []
         rewards_all = []
-        while True: # Sample transitions
-           # if len(steps_all) > 21 or (len(steps_all) < 20 and steps_ep%4 == 0):
-                #action, eps_threshold = select_actions(obs, eps_start, eps_end,
-                #                                      eps_decay, steps_train, policy_net)
-                #action = action.to(device)
-                
+
+        start_time = time.time()
+        while True:
             action, eps_threshold = select_actions(obs, eps_start, eps_end,
                                                        eps_decay, steps_train, policy_net)
             action = action.to(device)
 
-            reward = env.step_(action)
+            reward, done = env.step_(action)
             reward = torch.tensor(reward,dtype=torch.float).view(-1,1)
             obs_next = env.render()
             obs_next = resize(np.uint8(obs_next)).unsqueeze(0).to(device)
@@ -211,62 +217,134 @@ def train(n_epoch, learning_rate, batch_size, gamma, eps_start, eps_end,
 
             obs = env.render()
             obs = resize(np.uint8(obs)).unsqueeze(0).to(device)
-            if memory_state == 'full':
-                # TODO: Disregard last transition if incomplete or complete it
-                break
 
-            if reward == 100:
+            if done:
                 rewards_all.append(rewards_ep/steps_ep)
                 steps_all.append(steps_ep)
                 successes += 1
-                rewards_ep = 0
-                steps_ep = 0
-
-                env.reset_target_position(random_=random_target)
-                env.reset_robot_position(random_=random_link)
+                break
 
             elif steps_ep == max_steps:
                 rewards_all.append(rewards_ep)
                 steps_all.append(steps_ep)
-                rewards_ep = 0
-                steps_ep = 0
+                break
 
-                env.reset_target_position(random_=random_target)
-                env.reset_robot_position(random_=random_link)
-
-            # if steps%50 == 0:
-            #     print('--- Epsilon threshold: ' + str(eps_threshold) + ' Averaged Return: ' + str(reward_avg) + ' ---')
-        end_time = time.time()
-
-        n_iter = memory.__len__()//batch_size
-        for epoch in range(n_epoch):
-    
-            for iter in range(n_iter):
+            end_time = time.time()
+            status = optimize_model(policy_net, target_net, optimizer, memory, gamma, batch_size)
+            if status != False:
                 grad_upd += 1
-                optimize_model(policy_net, target_net, optimizer, memory, gamma, batch_size)
-                if iter % (n_iter//5) == 0 and iter != 0:
-                    qvalue_eval = eval_policy.get_qvalue(policy_net)
-                    logz.log_tabular('Averaged Steps',np.around(np.average(steps_all),decimals=0))
-                    logz.log_tabular('Averaged Rewards',np.around(np.average(rewards_all),decimals=2))
-                    logz.log_tabular('Cumulative Successes',successes)
-                    logz.log_tabular('Policy update',update)
-                    logz.log_tabular('Number of episodes',len(steps_all))
-                    logz.log_tabular('Sampling time (s)',(end_time-start_time))
-                    logz.log_tabular('Epsilon threshold', eps_threshold)
-                    logz.log_tabular('Gradient update', grad_upd )
-                    logz.log_tabular('Updates target network', target_upd)
-                    logz.log_tabular('Average q-value evaluation', qvalue_eval)
-                    logz.dump_tabular()
-            
-                if grad_upd % target_update == 0: # update target network parameters
-                    target_net.load_state_dict(policy_net.state_dict())
-                    target_net.eval()
-                    target_upd += 1
-    
-        memory = Replay_Buffer(buffer_size)
-    
+
+            if ep % 10 == 0:
+                qvalue_eval = eval_policy.get_qvalue(policy_net)
+                logz.log_tabular('Averaged Steps',np.around(np.average(steps_all),decimals=0)) # last 10 episodes
+                logz.log_tabular('Averaged Rewards',np.around(np.average(rewards_all),decimals=2))
+                logz.log_tabular('Cumulative Successes',successes)
+                logz.log_tabular('Number of episodes',ep+1)
+                logz.log_tabular('Sampling time (s)',(end_time-start_time))
+                logz.log_tabular('Epsilon threshold', eps_threshold)
+                logz.log_tabular('Gradient update', grad_upd )
+                logz.log_tabular('Updates target network', target_upd)
+                logz.log_tabular('Average q-value evaluation', qvalue_eval)
+                logz.dump_tabular()
+
+                steps_all = []
+                rewards_all = []
+
+            if grad_upd % target_update == 0: # update target network parameters
+                target_net.load_state_dict(policy_net.state_dict())
+                target_net.eval()
+                target_upd += 1
+
     logz.save_pytorch_model(policy_net.state_dict())
     env.terminate()
+
+    # for update in range(policy_update):
+    #     start_time = time.time()
+    #     steps_all = []
+    #     rewards_all = []
+    #     while True: # Sample transitions
+    #        # if len(steps_all) > 21 or (len(steps_all) < 20 and steps_ep%4 == 0):
+    #             #action, eps_threshold = select_actions(obs, eps_start, eps_end,
+    #             #                                      eps_decay, steps_train, policy_net)
+    #             #action = action.to(device)
+    #
+    #         action, eps_threshold = select_actions(obs, eps_start, eps_end,
+    #                                                    eps_decay, steps_train, policy_net)
+    #         action = action.to(device)
+    #
+    #         reward = env.step_(action)
+    #         reward = torch.tensor(reward,dtype=torch.float).view(-1,1)
+    #         obs_next = env.render()
+    #         obs_next = resize(np.uint8(obs_next)).unsqueeze(0).to(device)
+    #         transition = {'s': obs,
+    #                       'a': action,
+    #                       'r': reward,
+    #                       "s'": obs_next
+    #                       }
+    #         steps_ep += 1
+    #         steps_train += 1
+    #         rewards_ep += reward
+    #
+    #         memory_state = memory.push(transition)
+    #
+    #         obs = env.render()
+    #         obs = resize(np.uint8(obs)).unsqueeze(0).to(device)
+    #         if memory_state == 'full':
+    #             # TODO: Disregard last transition if incomplete or complete it
+    #             break
+    #
+    #         if reward == 100:
+    #             rewards_all.append(rewards_ep/steps_ep)
+    #             steps_all.append(steps_ep)
+    #             successes += 1
+    #             rewards_ep = 0
+    #             steps_ep = 0
+    #
+    #             env.reset_target_position(random_=random_target)
+    #             env.reset_robot_position(random_=random_link)
+    #
+    #         elif steps_ep == max_steps:
+    #             rewards_all.append(rewards_ep)
+    #             steps_all.append(steps_ep)
+    #             rewards_ep = 0
+    #             steps_ep = 0
+    #
+    #             env.reset_target_position(random_=random_target)
+    #             env.reset_robot_position(random_=random_link)
+    #
+    #         # if steps%50 == 0:
+    #         #     print('--- Epsilon threshold: ' + str(eps_threshold) + ' Averaged Return: ' + str(reward_avg) + ' ---')
+    #     end_time = time.time()
+    #
+    #     n_iter = memory.__len__()//batch_size
+    #     for epoch in range(n_epoch):
+    #
+    #         for iter in range(n_iter):
+    #             grad_upd += 1
+    #             optimize_model(policy_net, target_net, optimizer, memory, gamma, batch_size)
+    #             if iter % (n_iter//5) == 0 and iter != 0:
+    #                 qvalue_eval = eval_policy.get_qvalue(policy_net)
+    #                 logz.log_tabular('Averaged Steps',np.around(np.average(steps_all),decimals=0))
+    #                 logz.log_tabular('Averaged Rewards',np.around(np.average(rewards_all),decimals=2))
+    #                 logz.log_tabular('Cumulative Successes',successes)
+    #                 logz.log_tabular('Policy update',update)
+    #                 logz.log_tabular('Number of episodes',len(steps_all))
+    #                 logz.log_tabular('Sampling time (s)',(end_time-start_time))
+    #                 logz.log_tabular('Epsilon threshold', eps_threshold)
+    #                 logz.log_tabular('Gradient update', grad_upd )
+    #                 logz.log_tabular('Updates target network', target_upd)
+    #                 logz.log_tabular('Average q-value evaluation', qvalue_eval)
+    #                 logz.dump_tabular()
+    #
+    #             if grad_upd % target_update == 0: # update target network parameters
+    #                 target_net.load_state_dict(policy_net.state_dict())
+    #                 target_net.eval()
+    #                 target_upd += 1
+    #
+    #     memory = Replay_Buffer(buffer_size)
+    #
+    # logz.save_pytorch_model(policy_net.state_dict())
+    # env.terminate()
 
 
 def setup_logger(logdir, locals_):
@@ -321,7 +399,7 @@ def main():
           args.random_target,
           args.repeat_actions,
           logdir)
-    
+
 
 if __name__ == "__main__":
     main()
