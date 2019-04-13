@@ -73,16 +73,20 @@ class DQN(nn.Module):
         return self.fc1(x.view(x.size(0),-1))
 
 class evaluation(object):
-    def __init__(self, env, n_states=10):
+    def __init__(self, env, expdir, n_states=10):
         self.states_eval = []
+        self.env = env
+        self.expdir = expdir
+        self.ep = 0
         self.resize = T.Compose([T.ToPILImage(),
                                  T.Grayscale(num_output_channels=1),
                                  T.Resize(64, interpolation=Image.BILINEAR),
-                                 T.ToTensor()])
+                                 T.ToTensor(),
+                                 T.Normalize([0.5,],[0.5,])])
         for _ in range(n_states):
-            env.reset_target_position(random_=True)
-            env.reset_robot_position(random_=False)
-            img = self.resize(np.uint8(env.render())).unsqueeze(0).to(device)
+            self.env.reset_target_position(random_=True)
+            self.env.reset_robot_position(random_=False)
+            img = self.resize(np.uint8(self.env.render())).unsqueeze(0).to(device)
             self.states_eval.append(img)
 
     def get_qvalue(self,policy_net):
@@ -92,6 +96,50 @@ class evaluation(object):
             qvalues += policy_net(img).max(1)[0]
 
         return (qvalues/len(self.states_eval))[0].item()
+
+    def sample_episode(self,policy_net,n_episodes=5):
+        policy_net.eval()
+        steps_all = []
+        return_all = []
+        for _ in range(n_episodes):          
+            steps = 0
+            return_ = 0
+            img_ep = deque([])
+            self.env.reset_robot_position()
+            self.env.reset_target_position(random_=True)
+            while True:         
+                img = self.resize(np.uint8(self.env.render())).unsqueeze(0)     
+                img_ep.append(img)
+                action = policy_net(img.to(device)).argmax(1).view(1,-1)
+                reward, done = self.env.step_(action)
+                steps += 1
+                return_ += reward
+                if done==True:
+                    break
+                elif steps == 600:
+                    steps = 0
+                    return_ = 0  
+                    break
+            self.record_episode(img_ep)    
+            steps_all.append(steps)
+            return_all.append(return_)
+        return return_all, steps_all
+
+
+    def record_episode(self,img_all):
+        logdir = os.path.expanduser('~') + '/robotics_drl/reacher/' + self.expdir + '/episode%s'%(self.ep)
+        if not(os.path.exists(logdir)):
+            os.makedirs(logdir)
+        size = 64, 64
+        for idx, img in enumerate(img_all):
+            img = img.cpu().numpy()
+            ndarr = np.uint8(img).reshape(64,64)
+            im = Image.fromarray(ndarr)
+            imdir = os.path.join(logdir,'step%s.jpg'%idx)
+            im.resize(size, Image.BILINEAR)
+            im.save(imdir,"JPEG")
+        self.ep += 1 
+
 
 def select_actions(state,eps_start,eps_end,eps_decay,steps_done,policy_net):
     sample = random.random()
@@ -126,7 +174,7 @@ def optimize_model(policy_net,target_net, optimizer, memory, gamma, batch_size):
 
     non_final_idx = []
     for idx, r in enumerate(reward_batch):
-        if r != 1000:
+        if r != 1:
             non_final_idx.append(idx)
 
     non_final_idx = torch.tensor(non_final_idx,dtype=torch.long)
@@ -154,7 +202,7 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
 
     env = environment()
 
-    eval_policy = evaluation(env)
+    eval_policy = evaluation(env,logdir)
 
     env.reset_target_position(random_=True)
     env.reset_robot_position(random_=False)
@@ -162,7 +210,8 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
     resize = T.Compose([T.ToPILImage(),
                         T.Grayscale(num_output_channels=1),
                         T.Resize(64, interpolation=Image.BILINEAR),
-                        T.ToTensor()])
+                        T.ToTensor(),
+                        T.Normalize([0.5,],[0.5,])])
     img = env.render()
     img = torch.from_numpy(img.copy())
     img_height, img_width, _ = img.shape
@@ -247,9 +296,12 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
         sampling_time /= ep            
 
         if ep % 5 == 0:
+            return_val, steps_val = eval_policy.sample_episode(policy_net,n_episodes=2)
             qvalue_eval = eval_policy.get_qvalue(policy_net)
-            logz.log_tabular('Averaged Steps',np.around(np.average(steps_all),decimals=0)) # last 10 episodes
-            logz.log_tabular('Averaged Rewards',np.around(np.average(rewards_all),decimals=2))
+            logz.log_tabular('Averaged Steps Traing',np.around(np.average(steps_all),decimals=0)) # last 10 episodes
+            logz.log_tabular('Averaged Return Training',np.around(np.average(rewards_all),decimals=2))
+            logz.log_tabular('Averaged Steps Validation',np.around(np.average(steps_val),decimals=0))
+            logz.log_tabular('Averaged Return Validation',np.around(np.average(return_val),decimals=2))
             logz.log_tabular('Cumulative Successes',successes)
             logz.log_tabular('Number of episodes',ep)
             logz.log_tabular('Sampling time (s)', sampling_time)
@@ -372,11 +424,11 @@ def main():
     parser.add_argument('-buffer_size',default=30000,type=int)
     parser.add_argument('-ep','--episodes',default=300,type=int)
     parser.add_argument('-target_update',default=1500,type=int,help='every n gradient steps')
-    parser.add_argument('-max_steps',default=1500,type=int)
-    parser.add_argument('-gamma',default=0.9999,type=float)
+    parser.add_argument('-max_steps',default=400,type=int)
+    parser.add_argument('-gamma',default=0.9,type=float)
     parser.add_argument('-eps_start',default=0.9,type=float)
     parser.add_argument('-eps_end',default=0.1,type=float)
-    parser.add_argument('-eps_decay',default=40000,type=float)
+    parser.add_argument('-eps_decay',default=60000,type=float)
     parser.add_argument('-randL','--random_link',action='store_true')
     parser.add_argument('-randT','--random_target',action='store_true')
     parser.add_argument('-rpa','--repeat_actions',action='store_true')
@@ -388,7 +440,9 @@ def main():
     logdir = os.path.join('data', logdir)
     if not(os.path.exists(logdir)):
         os.makedirs(logdir)
+        print(logdir)
 
+    start = time.time()
 
     train(args.episodes,
           args.learning_rate,
@@ -405,6 +459,8 @@ def main():
           args.repeat_actions,
           logdir)
 
+    end = time.time()
 
+    print("Total running time %s"%str(end-start))
 if __name__ == "__main__":
     main()
