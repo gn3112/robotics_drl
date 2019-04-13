@@ -35,7 +35,7 @@ class environment(object):
 
     def render(self):
         img = self.camera.capture_rgb()
-        return img
+        return img*256
 
     def step_(self,action):
         if self.position_control != True:

@@ -81,8 +81,7 @@ class evaluation(object):
         self.resize = T.Compose([T.ToPILImage(),
                                  T.Grayscale(num_output_channels=1),
                                  T.Resize(64, interpolation=Image.BILINEAR),
-                                 T.ToTensor(),
-                                 T.Normalize([0.5,],[0.5,])])
+                                 T.ToTensor()])
         for _ in range(n_states):
             self.env.reset_target_position(random_=True)
             self.env.reset_robot_position(random_=False)
@@ -209,9 +208,8 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
 
     resize = T.Compose([T.ToPILImage(),
                         T.Grayscale(num_output_channels=1),
-                        T.Resize(64, interpolation=Image.BILINEAR),
-                        T.ToTensor(),
-                        T.Normalize([0.5,],[0.5,])])
+                        T.Resize(64, interpolation = Image.BILINEAR),
+                        T.ToTensor()])
     img = env.render()
     img = torch.from_numpy(img.copy())
     img_height, img_width, _ = img.shape
@@ -252,7 +250,7 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
             reward, done = env.step_(action)
             reward = torch.tensor(reward,dtype=torch.float).view(-1,1)
             obs_next = env.render()
-            obs_next = resize(np.uint8(obs_next)).unsqueeze(0).to(device)
+            obs_next = resize(np.uint8(obs_next)).unsqueeze(0).to(device)        
             transition = {'s': obs,
                           'a': action,
                           'r': reward,
