@@ -1,0 +1,2 @@
+Averaged Steps Traing	Averaged Return Training	Averaged Steps Validation	Averaged Return Validation	Cumulative Successes	Number of episodes	Sampling time (s)	Epsilon threshold	Gradient update	Updates target network	Average q-value evaluation
+500.0	-787.04	0.0	0.0	0	5	2.3320513725280763	0.8673643549866492	2368	128	-2.7587804794311523

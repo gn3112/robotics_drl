@@ -107,8 +107,9 @@ class evaluation(object):
             self.env.reset_robot_position()
             self.env.reset_target_position(random_=True)
             while True:         
-                img = self.resize(np.uint8(self.env.render())).unsqueeze(0)     
+                img = np.uint8(self.env.render())     
                 img_ep.append(img)
+                img = self.resize(img).unsqueeze(0)
                 action = policy_net(img.to(device)).argmax(1).view(1,-1)
                 reward, done = self.env.step_(action)
                 steps += 1
@@ -131,8 +132,7 @@ class evaluation(object):
             os.makedirs(logdir)
         size = 64, 64
         for idx, img in enumerate(img_all):
-            img = img.cpu().numpy()
-            ndarr = np.uint8(img).reshape(64,64)
+            ndarr = img.reshape(64,64,3)
             im = Image.fromarray(ndarr)
             imdir = os.path.join(logdir,'step%s.jpg'%idx)
             im.resize(size, Image.BILINEAR)
