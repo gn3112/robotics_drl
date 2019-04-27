@@ -67,7 +67,6 @@ class environment(object):
             # +0.125>self.dist_end_effector>-0.125 and +2>self.or_end_effector>-2
             reward = 1
             self.done = True
-            print('Target reached')
         else:
             reward = -exp(0.25*dist_ee_target)
             # reward = -1
