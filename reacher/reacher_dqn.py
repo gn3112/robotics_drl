@@ -77,7 +77,7 @@ class DQN(nn.Module):
         return self.fc1(x.view(x.size(0),-1))
 
 class evaluation(object):
-    def __init__(self, env, expdir, n_states=10):
+    def __init__(self, env, expdir, n_states=20):
         self.states_eval = []
         self.env = env
         self.expdir = expdir
@@ -100,7 +100,7 @@ class evaluation(object):
 
         return (qvalues/len(self.states_eval))[0].item()
 
-    def sample_episode(self,policy_net,n_episodes=5,threshold_ep=600):
+    def sample_episode(self,policy_net,save_video=False,n_episodes=5,threshold_ep=600):
         # 0.1 greedy policy or 100% action from network ?
         policy_net.eval()
         steps_all = []
@@ -125,7 +125,8 @@ class evaluation(object):
                     steps = 0
                     return_ = 0
                     break
-            self.save_ep_video(img_ep)
+
+            if save_video==True: self.save_ep_video(img_ep)
             steps_all.append(steps)
             return_all.append(return_)
         return return_all, steps_all
@@ -302,9 +303,9 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
         sampling_time /= ep
 
         if ep % 5 == 0:
-            return_val, steps_val = eval_policy.sample_episode(policy_net,n_episodes=2)
+            return_val, steps_val = eval_policy.sample_episode(policy_net,save_video=True if ep%==50 else False, n_episodes=5)
             qvalue_eval = eval_policy.get_qvalue(policy_net)
-            logz.log_tabular('Averaged Steps Traing',np.around(np.average(steps_all),decimals=0)) # last 10 episodes
+            logz.log_tabular('Averaged Steps Traning',np.around(np.average(steps_all),decimals=0)) # last 10 episodes
             logz.log_tabular('Averaged Return Training',np.around(np.average(rewards_all),decimals=2))
             logz.log_tabular('Averaged Steps Validation',np.around(np.average(steps_val),decimals=0))
             logz.log_tabular('Averaged Return Validation',np.around(np.average(return_val),decimals=2))
@@ -318,6 +319,7 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
             logz.dump_tabular()
             steps_all = []
             rewards_all = []
+
 
 
     logz.save_pytorch_model(policy_net.state_dict())

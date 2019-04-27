@@ -11,7 +11,7 @@ class im_to_vid(object):
             os.makedirs(log_video_dir)
 
     def write_video(self,img_array,ep_num,size_img):
-        out = cv2.VideoWriter('episode%s.avi'%(ep_num),cv2.VideoWriter_fourcc(*'MPEG'), 5, size_img)
+        out = cv2.VideoWriter('episode%s.avi'%(ep_num),cv2.VideoWriter_fourcc(*'MPEG'), 20, size_img)
         for i in range(len(img_array)):
             out.write(img_array[i])
 
