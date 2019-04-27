@@ -3,20 +3,20 @@ import os
 from subprocess import Popen
 from matplotlib import pyplot as plt
 import time
+import torch
 from torch import nn
 import torch.nn.functional as F
 from torchvision import transforms as T
 import torch.optim as optim
 import random
-import torch
-from environment import environment
 from PIL import Image
 import math
 import numpy as np
 import logz
 import inspect
 from collections import deque
-
+from environment import environment
+from images_to_video import im_to_vid
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Replay_Buffer(object):
@@ -35,7 +35,7 @@ class Replay_Buffer(object):
             if len(transition) != 4:
                 raise RunTimeError('Your Transition is incomplete')
 
-            self.memory.append(transition)
+            self.memory.appendleft(transition)
             return 'free'
 
     def clear_(self):
@@ -52,11 +52,11 @@ class DQN(nn.Module):
     def __init__(self,h,w):
         super(DQN, self).__init__()
         self.conv1 = nn.Conv2d(1,16,kernel_size=5, stride=2)
-        self.bn1 = nn.BatchNorm2d(16) # Batch norm for RL 50/50
+        # self.bn1 = nn.BatchNorm2d(16) # Batch norm for RL 50/50
         self.conv2 = nn.Conv2d(16,32,kernel_size=5, stride=2)
-        self.bn2 = nn.BatchNorm2d(32)
+        # self.bn2 = nn.BatchNorm2d(32)
         self.conv3 = nn.Conv2d(32,32,kernel_size=5, stride=2)
-        self.bn3 = nn.BatchNorm2d(32)
+        # self.bn3 = nn.BatchNorm2d(32)
 
         def conv2d_size_out(size, kernel_size = 5, stride = 2):
             return (size - (kernel_size - 1) - 1) // stride + 1
@@ -64,12 +64,16 @@ class DQN(nn.Module):
         conv_h = conv2d_size_out(conv2d_size_out(conv2d_size_out(h)))
         conv_w = conv2d_size_out(conv2d_size_out(conv2d_size_out(w)))
 
-        self.fc1 = nn.Linear(conv_h*conv_w*32,9)
+        self.fc1 = nn.Linear(conv_h*conv_w*32,8) # dont hardcode num of actions
 
     def forward(self, x):
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu(self.bn2(self.conv2(x)))
-        x = F.relu(self.bn3(self.conv3(x)))
+        x = F.relu((self.conv1(x)))
+        x = F.relu((self.conv2(x)))
+        x = F.relu((self.conv3(x)))
+
+        # x = F.relu(self.bn1(self.conv1(x)))
+        # x = F.relu(self.bn2(self.conv2(x)))
+        # x = F.relu(self.bn3(self.conv3(x)))
         return self.fc1(x.view(x.size(0),-1))
 
 class evaluation(object):
@@ -84,7 +88,7 @@ class evaluation(object):
                                  T.ToTensor()])
         for _ in range(n_states):
             self.env.reset_target_position(random_=True)
-            self.env.reset_robot_position(random_=False)
+            self.env.reset_robot_position(random_=True)
             img = self.resize(np.uint8(self.env.render())).unsqueeze(0).to(device)
             self.states_eval.append(img)
 
@@ -96,18 +100,19 @@ class evaluation(object):
 
         return (qvalues/len(self.states_eval))[0].item()
 
-    def sample_episode(self,policy_net,n_episodes=5):
+    def sample_episode(self,policy_net,n_episodes=5,threshold_ep=600):
+        # 0.1 greedy policy or 100% action from network ?
         policy_net.eval()
         steps_all = []
         return_all = []
-        for _ in range(n_episodes):          
+        for _ in range(n_episodes):
             steps = 0
             return_ = 0
             img_ep = deque([])
-            self.env.reset_robot_position()
+            self.env.reset_robot_position(random_=False)
             self.env.reset_target_position(random_=True)
-            while True:         
-                img = np.uint8(self.env.render())     
+            while True:
+                img = np.uint8(self.env.render())
                 img_ep.append(img)
                 img = self.resize(img).unsqueeze(0)
                 action = policy_net(img.to(device)).argmax(1).view(1,-1)
@@ -116,15 +121,19 @@ class evaluation(object):
                 return_ += reward
                 if done==True:
                     break
-                elif steps == 600:
+                elif steps == threshold_ep:
                     steps = 0
-                    return_ = 0  
+                    return_ = 0
                     break
-            self.record_episode(img_ep)    
+            self.save_ep_video(img_ep)
             steps_all.append(steps)
             return_all.append(return_)
         return return_all, steps_all
 
+    def save_ep_video(self,imgs):
+        self.ep += 1
+        im_to_vid = im_to_vid(self.expdir)
+        im_to_vid.from_list(imgs,self.ep)
 
     def record_episode(self,img_all):
         logdir = os.path.expanduser('~') + '/robotics_drl/reacher/' + self.expdir + '/episode%s'%(self.ep)
@@ -137,8 +146,7 @@ class evaluation(object):
             imdir = os.path.join(logdir,'step%s.jpg'%idx)
             im.resize(size, Image.BILINEAR)
             im.save(imdir,"JPEG")
-        self.ep += 1 
-
+        self.ep += 1
 
 def select_actions(state,eps_start,eps_end,eps_decay,steps_done,policy_net):
     sample = random.random()
@@ -147,7 +155,7 @@ def select_actions(state,eps_start,eps_end,eps_decay,steps_done,policy_net):
         policy_net.eval()
         return policy_net(state).argmax(1).view(1,-1), eps_threshold
     else:
-        return torch.tensor([[random.randrange(9)]], dtype=torch.long), eps_threshold
+        return torch.tensor([[random.randrange(len(env.action_all))]], dtype=torch.long), eps_threshold
 
 def optimize_model(policy_net,target_net, optimizer, memory, gamma, batch_size):
     if memory.__len__() < batch_size:
@@ -250,7 +258,7 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
             reward, done = env.step_(action)
             reward = torch.tensor(reward,dtype=torch.float).view(-1,1)
             obs_next = env.render()
-            obs_next = resize(np.uint8(obs_next)).unsqueeze(0).to(device)        
+            obs_next = resize(np.uint8(obs_next)).unsqueeze(0).to(device)
             transition = {'s': obs,
                           'a': action,
                           'r': reward,
@@ -288,10 +296,10 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
                 target_net.load_state_dict(policy_net.state_dict())
                 target_net.eval()
                 target_upd += 1
-            
+
         end_time = time.time()
         sampling_time += end_time-start_time
-        sampling_time /= ep            
+        sampling_time /= ep
 
         if ep % 5 == 0:
             return_val, steps_val = eval_policy.sample_episode(policy_net,n_episodes=2)
@@ -438,7 +446,6 @@ def main():
     logdir = os.path.join('data', logdir)
     if not(os.path.exists(logdir)):
         os.makedirs(logdir)
-        print(logdir)
 
     start = time.time()
 

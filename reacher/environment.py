@@ -30,8 +30,7 @@ class environment(object):
                       [self.increment,0],
                       [-self.increment,0],
                       [-self.increment,self.increment],
-                      [self.increment,-self.increment],
-                      [0,0]]
+                      [self.increment,-self.increment]]
 
     def render(self):
         img = self.camera.capture_rgb()
@@ -103,7 +102,7 @@ class environment(object):
         self.target_pos = self.target_position()
         self.done = False
 
-    def reset_robot_position(self,random_=False,joint1_pos=0,joint2_pos=-0.6109):
+    def reset_robot_position(self,random_=False,joint1_pos=0,joint2_pos=-0.3):#-.6109
         if random_ == True:
             joint1_pos = random.random()*2*pi
             joint2_pos = random.random()*2*pi
@@ -124,7 +123,7 @@ class environment(object):
         steps_all = []
         for _ in range(episodes):
             while True:
-                action = random.randrange(9)
+                action = random.randrange(len(self.action_all))
                 reward = self.step_(action)
                 steps += 1
 
