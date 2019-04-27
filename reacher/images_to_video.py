@@ -30,8 +30,9 @@ class im_to_vid(object):
             for filename in glob.glob('data/' + exp_dir + '/episode%s/*.jpg'%(ep_num)): #get filename
                 filename_all.append(filename)
 
-            filename_all.sort(key=sortKey) #sort steps in order§
-            for _, filename in enumerate(filename_all): #put each step image into a list
+            filename_all.sort(key=sortKey) #sort steps in order
+            for _, filename in enumerate(filename_all):
+                #put each step image into a list
                 img = cv2.imread(filename)
                 height, width, layers = img.shape
                 size =  (width, height)

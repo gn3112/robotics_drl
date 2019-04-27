@@ -4,6 +4,7 @@ import vrep
 from math import sqrt, pi, exp
 from matplotlib import pyplot as plt
 import random
+import numpy as np
 
 class environment(object):
     def __init__(self,position_control=True,port=19997):
@@ -30,12 +31,18 @@ class environment(object):
                       [self.increment,0],
                       [-self.increment,0],
                       [-self.increment,self.increment],
-                      [self.increment,-self.increment],
-                      [0,0]]
+                      [self.increment,-self.increment]]
+
+    # def render(self):
+    #     img = self.camera.capture_rgb()
+    #     return img
 
     def render(self):
-        img = self.camera.capture_rgb()
-        return img
+        joints_pos = self.get_joints_pos()
+        target_pos = self.target_position()
+        obs = np.concatenate((joints_pos,target_pos[0:2]),axis=0)
+        print(obs)
+        return obs
 
     def step_(self,action):
         if self.position_control != True:
@@ -68,10 +75,10 @@ class environment(object):
         # self.dist_target == self.dist_end_effector and self.or_target == self.or_end_effector:
             # +0.125>self.dist_end_effector>-0.125 and +2>self.or_end_effector>-2
             self.reached = 1
-            reward = 100
+            reward = 1
             print('Target reached')
         else:
-            reward = exp(-0.25*dist_ee_target)
+            reward = -exp(0.25*dist_ee_target)
             # reward = -1
 
         # obs = self.camera.capture_rgb()
@@ -114,7 +121,7 @@ class environment(object):
 
     def display(self):
         img = self.camera.capture_rgb()
-        plt.imshow(img,interpolation='nearest')
+        plt.imshow(img)
         plt.axis('off')
         plt.show()
         plt.pause(0.01)

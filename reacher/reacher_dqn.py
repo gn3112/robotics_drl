@@ -47,6 +47,24 @@ class Replay_Buffer(object):
     def __len__(self):
         return len(self.memory)
 
+class DQN_FC(nn.Module):
+
+    def __init__(self):
+        super(DQN_FC, self).__init__()
+        self.fc1 = nn.Linear(4,128)
+        self.fc2 = nn.Linear(128,128)
+        self.fc3 = nn.Linear(128, 8)
+
+    def forward(self, x):
+        x = F.relu((self.fc1(x.float())))
+        x = F.relu((self.fc2(x)))
+        x = F.relu((self.fc3(x)))
+
+        # x = F.relu(self.bn1(self.conv1(x)))
+        # x = F.relu(self.bn2(self.conv2(x)))
+        # x = F.relu(self.bn3(self.conv3(x)))
+        return x
+
 class DQN(nn.Module):
 
     def __init__(self,h,w):
@@ -82,21 +100,21 @@ class evaluation(object):
         self.env = env
         self.expdir = expdir
         self.ep = 0
-        self.resize = T.Compose([T.ToPILImage(),
-                                 T.Grayscale(num_output_channels=1),
-                                 T.Resize(64, interpolation=Image.BILINEAR),
-                                 T.ToTensor()])
+        # self.resize = T.Compose([T.ToPILImage(),
+        #                          T.Grayscale(num_output_channels=1),
+        #                          T.Resize(64, interpolation=Image.BILINEAR),
+        #                          T.ToTensor()])
         for _ in range(n_states):
             self.env.reset_target_position(random_=True)
             self.env.reset_robot_position(random_=True)
-            img = self.resize(np.uint8(self.env.render())).unsqueeze(0).to(device)
+            img = ((self.env.render()))
             self.states_eval.append(img)
 
     def get_qvalue(self,policy_net):
         policy_net.eval()
         qvalues = 0
         for _, img in enumerate(self.states_eval):
-            qvalues += policy_net(img).max(1)[0]
+            qvalues += policy_net(torch.from_numpy(img)).max(1)[0]
 
         return (qvalues/len(self.states_eval))[0].item()
 
@@ -112,10 +130,10 @@ class evaluation(object):
             self.env.reset_robot_position(random_=False)
             self.env.reset_target_position(random_=True)
             while True:
-                img = np.uint8(self.env.render())
+                img = (self.env.render())
                 img_ep.append(img)
-                img = self.resize(img).unsqueeze(0)
-                action = policy_net(img.to(device)).argmax(1).view(1,-1)
+                img = (img)
+                action = policy_net(torch.from_numpy(img)).argmax(0).view(1,-1)
                 reward, done = self.env.step_(action)
                 steps += 1
                 return_ += reward
@@ -149,12 +167,12 @@ class evaluation(object):
             im.save(imdir,"JPEG")
         self.ep += 1
 
-def select_actions(state,eps_start,eps_end,eps_decay,steps_done,policy_net):
+def select_actions(state,eps_start,eps_end,eps_decay,steps_done,policy_net,env):
     sample = random.random()
     eps_threshold = eps_end + (eps_start - eps_end) * math.exp(-1. * steps_done / eps_decay)
     if sample > eps_threshold:
         policy_net.eval()
-        return policy_net(state).argmax(1).view(1,-1), eps_threshold
+        return (policy_net((state)).argmax(1).view(1,-1)), eps_threshold
     else:
         return torch.tensor([[random.randrange(len(env.action_all))]], dtype=torch.long), eps_threshold
 
@@ -187,16 +205,15 @@ def optimize_model(policy_net,target_net, optimizer, memory, gamma, batch_size):
 
     non_final_idx = torch.tensor(non_final_idx,dtype=torch.long)
     state_next_batch_nf = state_next_batch[non_final_idx]
-
-    state_action_values = policy_net(state_batch).gather(1, action_batch)
+    state_action_values = policy_net((state_batch)).gather(1, action_batch)
 
     for param in target_net.parameters():
         param.requires_grad = False
 
-    next_state_values = torch.zeros(batch_size,device=device)
+    next_state_values = torch.zeros((batch_size),device=device)
     next_state_values[non_final_idx] = target_net(state_next_batch_nf).max(1)[0]
-    expected_state_action_values = (next_state_values * gamma) + reward_batch.to(device)
-
+    expected_state_action_values = (next_state_values.view(-1,1) * gamma) + reward_batch
+    print(expected_state_action_values.size())
     loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
     optimizer.zero_grad()
     loss.backward()
@@ -215,16 +232,16 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
     env.reset_target_position(random_=True)
     env.reset_robot_position(random_=False)
 
-    resize = T.Compose([T.ToPILImage(),
-                        T.Grayscale(num_output_channels=1),
-                        T.Resize(64, interpolation = Image.BILINEAR),
-                        T.ToTensor()])
+    # resize = T.Compose([T.ToPILImage(),
+    #                     T.Grayscale(num_output_channels=1),
+    #                     T.Resize(64, interpolation = Image.BILINEAR),
+    #                     T.ToTensor()])
     img = env.render()
     img = torch.from_numpy(img.copy())
-    img_height, img_width, _ = img.shape
+    # img_height, img_width, _ = img.shape
 
-    policy_net = DQN(img_height,img_width).to(device)
-    target_net = DQN(img_height,img_width).to(device)
+    policy_net = DQN_FC()
+    target_net = DQN_FC()
     target_net.load_state_dict(policy_net.state_dict())
     target_net.eval()
 
@@ -232,7 +249,7 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
     memory = Replay_Buffer(buffer_size)
 
     obs = env.render()
-    obs = resize(np.uint8(obs)).unsqueeze(0).to(device)
+    obs = torch.from_numpy((obs)).view(1,-1)
 
     steps_ep = 0
     rewards_ep = 0
@@ -253,13 +270,12 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
         start_time = time.time()
         while True:
             action, eps_threshold = select_actions(obs, eps_start, eps_end,
-                                                       eps_decay, steps_train, policy_net)
-            action = action.to(device)
+                                                       eps_decay, steps_train, policy_net,env)
 
-            reward, done = env.step_(action)
+            reward = env.step_(action)
             reward = torch.tensor(reward,dtype=torch.float).view(-1,1)
             obs_next = env.render()
-            obs_next = resize(np.uint8(obs_next)).unsqueeze(0).to(device)
+            obs_next = torch.from_numpy(obs_next).view(1,-1)
             transition = {'s': obs,
                           'a': action,
                           'r': reward,
@@ -272,9 +288,9 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
             memory_state = memory.push(transition)
 
             obs = env.render()
-            obs = resize(np.uint8(obs)).unsqueeze(0).to(device)
+            obs = torch.from_numpy((obs)).view(1,-1)
 
-            if done==True:
+            if reward==1:
                 rewards_all.append(rewards_ep/steps_ep)
                 steps_all.append(steps_ep)
                 successes += 1
@@ -303,12 +319,12 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
         sampling_time /= ep
 
         if ep % 5 == 0:
-            return_val, steps_val = eval_policy.sample_episode(policy_net,save_video=True if ep%==50 else False, n_episodes=5)
-            qvalue_eval = eval_policy.get_qvalue(policy_net)
+            # return_val, steps_val = eval_policy.sample_episode(policy_net,save_video=True if ep%50==0 else False, n_episodes=5)
+            # qvalue_eval = eval_policy.get_qvalue(policy_net)
             logz.log_tabular('Averaged Steps Traning',np.around(np.average(steps_all),decimals=0)) # last 10 episodes
             logz.log_tabular('Averaged Return Training',np.around(np.average(rewards_all),decimals=2))
-            logz.log_tabular('Averaged Steps Validation',np.around(np.average(steps_val),decimals=0))
-            logz.log_tabular('Averaged Return Validation',np.around(np.average(return_val),decimals=2))
+            # logz.log_tabular('Averaged Steps Validation',np.around(np.average(steps_val),decimals=0))
+            # logz.log_tabular('Averaged Return Validation',np.around(np.average(return_val),decimals=2))
             logz.log_tabular('Cumulative Successes',successes)
             logz.log_tabular('Number of episodes',ep)
             logz.log_tabular('Sampling time (s)', sampling_time)
@@ -333,16 +349,16 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
     #        # if len(steps_all) > 21 or (len(steps_all) < 20 and steps_ep%4 == 0):
     #             #action, eps_threshold = select_actions(obs, eps_start, eps_end,
     #             #                                      eps_decay, steps_train, policy_net)
-    #             #action = action.to(device)
+    #             #action = action
     #
     #         action, eps_threshold = select_actions(obs, eps_start, eps_end,
     #                                                    eps_decay, steps_train, policy_net)
-    #         action = action.to(device)
+    #         action = action
     #
     #         reward = env.step_(action)
     #         reward = torch.tensor(reward,dtype=torch.float).view(-1,1)
     #         obs_next = env.render()
-    #         obs_next = resize(np.uint8(obs_next)).unsqueeze(0).to(device)
+    #         obs_next = resize(np.uint8(obs_next)).unsqueeze(0)
     #         transition = {'s': obs,
     #                       'a': action,
     #                       'r': reward,
@@ -355,7 +371,7 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
     #         memory_state = memory.push(transition)
     #
     #         obs = env.render()
-    #         obs = resize(np.uint8(obs)).unsqueeze(0).to(device)
+    #         obs = resize(np.uint8(obs)).unsqueeze(0)
     #         if memory_state == 'full':
     #             # TODO: Disregard last transition if incomplete or complete it
     #             break
