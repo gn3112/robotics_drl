@@ -8,11 +8,11 @@ def sortKey(s):
     return int(name_file.strip('.jpeg'))
 
 
-for i in range(4,5):
+for i in range(1,9):
     img_array = []
     filename_all = []
 
-    for filename in glob.glob('data/exp3_13-04-2019_19-49-13/episode1%s00/*.jpg'%(i)):
+    for filename in glob.glob('data/exp4_13-04-2019_19-51-33/episode%s00/*.jpg'%(i)):
         filename_all.append(filename)
 
     filename_all.sort(key=sortKey)
@@ -22,8 +22,8 @@ for i in range(4,5):
         size =  (width, height)
         img_array.append(img)
 
-    out = cv2.VideoWriter('episode1%s00_exp3.avi'%(i),cv2.VideoWriter_fourcc(*'MPEG'), 1, size)
-    print('Steps episode 1%s00: '%(i), len(img_array))
+    out = cv2.VideoWriter('episode%s00_exp4.avi'%(i),cv2.VideoWriter_fourcc(*'MPEG'), 5, size)
+    print('Steps episode %s00: '%(i), len(img_array))
     for i in range(len(img_array)):
         out.write(img_array[i])
 
