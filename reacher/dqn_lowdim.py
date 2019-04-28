@@ -52,14 +52,12 @@ class DQN_FC(nn.Module):
         super(DQN_FC, self).__init__()
         self.fc1 = nn.Linear(4,128)
         self.fc2 = nn.Linear(128,128)
-        self.fc3 = nn.Linear(128,128)
-        self.fc4 = nn.Linear(128, 8)
+        self.fc3 = nn.Linear(128, 8)
 
     def forward(self, x):
         x = F.relu((self.fc1(x.float())))
         x = F.relu((self.fc2(x)))
-        x = F.relu(self.fc3(x))
-        x = self.fc4(x)
+        x = self.fc3(x)
 
         # x = F.relu(self.bn1(self.conv1(x)))
         # x = F.relu(self.bn2(self.conv2(x)))
@@ -120,7 +118,7 @@ class evaluation(object):
                 qvalues += policy_net(torch.from_numpy(obs).view(1,-1).to(device)).max(1)[0]
         return (qvalues/len(self.states_eval))[0].item()
 
-    def sample_episode(self,policy_net,save_video=False,n_episodes=5,threshold_ep=300):
+    def sample_episode(self,policy_net,save_video=False,n_episodes=5,threshold_ep=100):
         # 0.1 greedy policy or 100% action from network ?
         policy_net.eval()
         steps_all = []
@@ -143,8 +141,6 @@ class evaluation(object):
                 if done:
                     break
                 elif steps == threshold_ep:
-                    steps = 0
-                    return_ = 0
                     break
 
             if save_video==True: self.save_ep_video(img_ep)
@@ -179,7 +175,7 @@ def select_actions(state,eps_start,eps_end,eps_decay,steps_done,policy_net,env):
         return torch.tensor([[random.randrange(len(env.action_all))]], dtype=torch.long), eps_threshold
 
 def optimize_model(policy_net,target_net, optimizer, memory, gamma, batch_size):
-    if memory.__len__() < batch_size:
+    if memory.__len__() < batch_size*100:
         return False
 
     transitions = memory.sample(batch_size)
@@ -319,8 +315,8 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
         sampling_time += end_time-start_time
         sampling_time /= ep
 
-        if ep % 5 == 0:
-            return_val, steps_val = eval_policy.sample_episode(policy_net,save_video=True if ep%50==0 else False, n_episodes=5)
+        if ep % 20 == 0:
+            return_val, steps_val = eval_policy.sample_episode(policy_net,save_video=True if ep%500==0 else False, n_episodes=5)
             qvalue_eval = eval_policy.get_qvalue(policy_net)
             logz.log_tabular('Averaged Steps Traning',np.around(np.average(steps_all),decimals=0)) # last 10 episodes
             logz.log_tabular('Averaged Return Training',np.around(np.average(rewards_all),decimals=2))
@@ -443,17 +439,17 @@ def setup_logger(logdir, locals_):
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('-lr','--learning_rate',default=0.0001,type=float)
+    parser.add_argument('-lr','--learning_rate',default=0.0002,type=float)
     parser.add_argument('--exp_name', required=True)
-    parser.add_argument('-bs','--batch_size',default=128,type=int)
-    parser.add_argument('-buffer_size',default=15000,type=int)
-    parser.add_argument('-ep','--episodes',default=1000,type=int)
-    parser.add_argument('-target_update',default=3000,type=int,help='every n gradient steps')
-    parser.add_argument('-max_steps',default=400,type=int)
-    parser.add_argument('-gamma',default=0.9,type=float)
+    parser.add_argument('-bs','--batch_size',default=64,type=int)
+    parser.add_argument('-buffer_size',default=100000,type=int)
+    parser.add_argument('-ep','--episodes',default=15000,type=int)
+    parser.add_argument('-target_update',default=7500,type=int,help='every n gradient steps')
+    parser.add_argument('-max_steps',default=150,type=int)
+    parser.add_argument('-gamma',default=0.999,type=float)
     parser.add_argument('-eps_start',default=0.9,type=float)
-    parser.add_argument('-eps_end',default=0.1,type=float)
-    parser.add_argument('-eps_decay',default=30000,type=float)
+    parser.add_argument('-eps_end',default=0.05,type=float)
+    parser.add_argument('-eps_decay',default=80000,type=float)
     parser.add_argument('-randL','--random_link',action='store_true')
     parser.add_argument('-randT','--random_target',action='store_true')
     parser.add_argument('-rpa','--repeat_actions',action='store_true')
