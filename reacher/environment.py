@@ -12,7 +12,7 @@ class environment(object):
         SCENE_FILE = join(dirname(abspath(__file__)), 'reacher.ttt')
         self.pr.launch(SCENE_FILE,headless=True)
         self.pr.start()
-        
+
         self.reached = 0
         self.done = False
         self.position_control = position_control
@@ -35,7 +35,7 @@ class environment(object):
     def render(self):
         img = self.camera.capture_rgb()
         return img*256
-    
+
     def get_obs(self):
         joints_pos = self.get_joints_pos()
         target_pos = self.target_position()
@@ -71,10 +71,10 @@ class environment(object):
         if dist_ee_target < 0.1:
         # self.dist_target == self.dist_end_effector and self.or_target == self.or_end_effector:
             # +0.125>self.dist_end_effector>-0.125 and +2>self.or_end_effector>-2
-            reward = 1
+            reward = 10
             self.done = True
         else:
-            reward = -exp(0.25*dist_ee_target)
+            reward = exp(-0.5*dist_ee_target)
             # reward = -1
 
         # obs = self.camera.capture_rgb()
