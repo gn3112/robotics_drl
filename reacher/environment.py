@@ -4,6 +4,7 @@ from math import sqrt, pi, exp
 from matplotlib import pyplot as plt
 import random
 from os.path import dirname, join, abspath
+import numpy as np
 
 class environment(object):
     def __init__(self,position_control=True):
@@ -11,7 +12,7 @@ class environment(object):
         SCENE_FILE = join(dirname(abspath(__file__)), 'reacher.ttt')
         self.pr.launch(SCENE_FILE,headless=True)
         self.pr.start()
-
+        
         self.reached = 0
         self.done = False
         self.position_control = position_control
@@ -21,7 +22,6 @@ class environment(object):
         self.joint2 = self.pr.get_joint('link_2')
         self.reacher = self.pr.get_object('reacher')
         self.camera = self.pr.get_vision_sensor('Vision_sensor')
-
         self.increment = 5*pi/180 # to radians
         self.action_all = [[self.increment,self.increment],
                       [-self.increment,-self.increment],
@@ -35,6 +35,12 @@ class environment(object):
     def render(self):
         img = self.camera.capture_rgb()
         return img*256
+    
+    def get_obs(self):
+        joints_pos = self.get_joints_pos()
+        target_pos = self.target_position()
+        obs = np.concatenate((joints_pos,target_pos[0:2]),axis=0)
+        return obs
 
     def step_(self,action):
         if self.position_control != True:
@@ -55,7 +61,7 @@ class environment(object):
         # target_pos = self.target_position()
         dist_ee_target = sqrt((ee_pos[0] - self.target_pos[0])**2 + \
         (ee_pos[1] - self.target_pos[1])**2)
-        # self.pos_target = self.target.get_position()
+        # self.pos_target = self.target.get_position:()
         # self.pos_end_effector = self.end_effector.get_position(relative_to=self.target)
         # self.or_target = self.target.get_orientation()
         # self.or_end_effector = self.end_effector.get_orientation(relative_to=self.target)
