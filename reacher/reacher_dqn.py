@@ -303,7 +303,7 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
         sampling_time /= ep
 
         if ep % 5 == 0:
-            return_val, steps_val = eval_policy.sample_episode(policy_net,save_video=True if ep%==50 else False, n_episodes=5)
+            return_val, steps_val = eval_policy.sample_episode(policy_net,save_video=True if ep%50==0 else False, n_episodes=5)
             qvalue_eval = eval_policy.get_qvalue(policy_net)
             logz.log_tabular('Averaged Steps Traning',np.around(np.average(steps_all),decimals=0)) # last 10 episodes
             logz.log_tabular('Averaged Return Training',np.around(np.average(rewards_all),decimals=2))
