@@ -5,15 +5,17 @@ import os
 
 class im_to_vid(object):
     def __init__(self,exp_dir):
-        home = os.path.extenduser('~')
-        log_video_dir = os.path.join(home,'robotics_drl/reacher/',exp_dir,'episodes_video')
-        if not(os.path.exists(log_video_dir)):
-            os.makedirs(log_video_dir)
+        home = os.path.expanduser('~')
+        self.log_video_dir = os.path.join(home,'robotics_drl/reacher/',exp_dir,'episodes_video')
+        if not(os.path.exists(self.log_video_dir)):
+            os.makedirs(self.log_video_dir)
 
     def write_video(self,img_array,ep_num,size_img):
-        out = cv2.VideoWriter('episode%s.avi'%(ep_num),cv2.VideoWriter_fourcc(*'MPEG'), 20, size_img)
+        size_img = (size_img[0],size_img[1])
+        path = os.path.join(self.log_video_dir,'episode%s.avi'%(ep_num))
+        out = cv2.VideoWriter(path,cv2.VideoWriter_fourcc(*'MPEG'), 20, size_img)
         for i in range(len(img_array)):
-            out.write(img_array[i])
+            out.write(np.uint8(img_array[i]))
 
         out.release()
 
@@ -30,8 +32,8 @@ class im_to_vid(object):
             for filename in glob.glob('data/' + exp_dir + '/episode%s/*.jpg'%(ep_num)): #get filename
                 filename_all.append(filename)
 
-            filename_all.sort(key=sortKey) #sort steps in order§
-            for _, filename in enumerate(filename_all): #put each step image into a list
+            filename_all.sort(key=sortKey) #sort steps in order
+            for _, filename in enumerate(filename_all):
                 img = cv2.imread(filename)
                 height, width, layers = img.shape
                 size =  (width, height)
@@ -42,5 +44,5 @@ class im_to_vid(object):
 
     def from_list(self,imgs,ep_num):
         height, width, layers = imgs[0].shape # Check data format
-        size = (width, height)
-        self.write_video(self,imgs,ep_num,size)
+        size = [width, height]
+        self.write_video(imgs,ep_num,size)
