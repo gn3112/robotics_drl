@@ -9,29 +9,30 @@ from torchvision import transforms as T
 from PIL import Image
 
 class results(object):
-    
-    def get_data_exp(exp_dir: str):
+
+    def get_data_exp(self,exp_dir):
         dir_path = os.path.dirname(os.path.realpath(__file__))
         data_path = os.path.join(dir_path,'data/%s/log.txt'%exp_dir)
         data = pd.read_csv(data_path, sep='\t', header='infer')
         return data
 
-    def get_data_multi_exp(exp_dir_all): # exp_dir_all shoud be a list with directory name
+    def get_data_multi_exp(self,exp_dir_all):
+        # exp_dir_all shoud be a list with directory name
         exp_all = []
         for exp_id in range(len(exp_dir_all)):
-            data_exp = get_data_exp(exp_dir_all[exp_id])
-            data_exp.assign(exp='exp%s'%exp_id)
+            data_exp = self.get_data_exp(exp_dir_all[exp_id])
+            data_exp = data_exp.assign(exp="exp%s"%(exp_id+1))
             exp_all.append(data_exp)
 
         data = pd.concat(exp_all)
         return data
 
-    def plot_data(data,y_axis = "Averaged Rewards", x_axis="Number of episodes"):
-        df = pd.DataFrame(data,columns=[x_axis,y_axis])
+    def plot_data(self,data,y_axis = "Averaged Return Training", x_axis="Number of episodes"):
+        df = pd.DataFrame(data,columns=[x_axis,y_axis,'exp'])
         hue = None
         for col in data.columns:
             if col == 'exp':
-                hue = 'exp'
+                hue = "exp"
 
         g = sns.relplot(x = x_axis,y = y_axis, hue=hue, kind='line', data=df)
         plt.show()
