@@ -440,21 +440,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-lr','--learning_rate',default=0.0002,type=float)
     parser.add_argument('--exp_name', required=True)
-<<<<<<< HEAD
-    parser.add_argument('-bs','--batch_size',default=128,type=int)
-    parser.add_argument('-buffer_size',default=15000,type=int)
-    parser.add_argument('-ep','--episodes',default=1000,type=int)
-    parser.add_argument('-target_update',default=3000,type=int,help='every n gradient steps')
-    parser.add_argument('-max_steps',default=400,type=int)
-    parser.add_argument('-gamma',default=0.99,type=float)
-=======
     parser.add_argument('-bs','--batch_size',default=64,type=int)
     parser.add_argument('-buffer_size',default=100000,type=int)
     parser.add_argument('-ep','--episodes',default=15000,type=int)
     parser.add_argument('-target_update',default=7500,type=int,help='every n gradient steps')
     parser.add_argument('-max_steps',default=150,type=int)
     parser.add_argument('-gamma',default=0.999,type=float)
->>>>>>> aba0c63a9106eb8b51d144ec97adf58718d02ac5
     parser.add_argument('-eps_start',default=0.9,type=float)
     parser.add_argument('-eps_end',default=0.05,type=float)
     parser.add_argument('-eps_decay',default=80000,type=float)
