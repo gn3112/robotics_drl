@@ -57,7 +57,7 @@ class environment(object):
             self.joint2.set_joint_position(joint2_pos + position_all[1], allow_force_mode=False)
 
         reward_all=0
-        for action_rep in range(2):
+        for action_rep in range(3):
             if self.position_control != True:
                 velocity_all = self.action_all[action]
                 #TO DO
