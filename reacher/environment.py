@@ -43,7 +43,6 @@ class environment(object):
         return obs
 
     def step_(self,action):
-<<<<<<< HEAD
         if self.position_control != True:
             velocity_all = self.action_all[action]
             #TO DO
@@ -57,32 +56,6 @@ class environment(object):
             self.joint1.set_joint_position(joint1_pos + position_all[0], allow_force_mode=False) # radians
             self.joint2.set_joint_position(joint2_pos + position_all[1], allow_force_mode=False)
 
-        self.pr.step()
-        ee_pos = self.end_effector_pos()
-        # target_pos = self.target_position()
-        dist_ee_target = sqrt((ee_pos[0] - self.target_pos[0])**2 + \
-        (ee_pos[1] - self.target_pos[1])**2)
-        # self.pos_target = self.target.get_position:()
-        # self.pos_end_effector = self.end_effector.get_position(relative_to=self.target)
-        # self.or_target = self.target.get_orientation()
-        # self.or_end_effector = self.end_effector.get_orientation(relative_to=self.target)
-        #
-        # self.dist_target = sqrt((self.pos_target[0])**2 + (self.pos_target[1])**2)
-        # self.dist_end_effector = sqrt((self.pos_end_effector[0])**2 + (self.pos_end_effector[1])**2)
-        if dist_ee_target < 0.1:
-        # self.dist_target == self.dist_end_effector and self.or_target == self.or_end_effector:
-            # +0.125>self.dist_end_effector>-0.125 and +2>self.or_end_effector>-2
-            reward = 1
-            self.done = True
-        else:
-            reward = -dist_ee_target
-            #reward = exp(-0.5*dist_ee_target)
-            #reward = -1
-
-        # obs = self.camera.capture_rgb()
-
-        return reward, self.done
-=======
         reward_all=0
         for action_rep in range(2):
             if self.position_control != True:
@@ -117,13 +90,12 @@ class environment(object):
                 self.done = True
                 break
             else:
-                reward = -dist_ee_target/5
+                reward = -dist_ee_target/10
                 # reward = -1
             reward_all += reward
             # obs = self.camera.capture_rgb()
 
         return reward_all, self.done
->>>>>>> aba0c63a9106eb8b51d144ec97adf58718d02ac5
 
 
     def end_effector_pos(self):
@@ -145,6 +117,20 @@ class environment(object):
             y_max = sqrt(1.22**2-x**2)
             y_min = 0
             y = random.random()*(y_max-y_min) + y_min
+
+        quadrant = random.randint(1,4)
+        if quadrant == 1:
+            x = -x
+            y = -y
+        elif quadrant == 2:
+            x = -x
+            y = y
+        elif quadrant == 3:
+            x = x
+            y = -y
+        elif quadrant == 4:
+            x = x
+            y = y
 
         self.target.set_position([x,y,0.125])
         self.pr.step()
