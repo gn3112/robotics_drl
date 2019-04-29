@@ -1,4 +1,3 @@
-from pyrep import PyRep
 import os
 from subprocess import Popen
 from matplotlib import pyplot as plt
@@ -106,7 +105,7 @@ class evaluation(object):
         #                          T.ToTensor()])
         for _ in range(n_states):
             self.env.reset_target_position(random_=True)
-            self.env.reset_robot_position(random_=True)
+            self.env.reset_robot_position(random_=False)
             img = ((self.env.render()))
             self.states_eval.append(img)
 
@@ -114,7 +113,7 @@ class evaluation(object):
         policy_net.eval()
         qvalues = 0
         for _, img in enumerate(self.states_eval):
-            qvalues += policy_net(torch.from_numpy(img)).max(1)[0]
+            qvalues += policy_net(torch.from_numpy(img).view(1,-1).to(device)).max(1)[0]
 
         return (qvalues/len(self.states_eval))[0].item()
 
@@ -172,7 +171,7 @@ def select_actions(state,eps_start,eps_end,eps_decay,steps_done,policy_net,env):
     eps_threshold = eps_end + (eps_start - eps_end) * math.exp(-1. * steps_done / eps_decay)
     if sample > eps_threshold:
         policy_net.eval()
-        return (policy_net((state)).argmax(1).view(1,-1)), eps_threshold
+        return (policy_net((state.to(device))).argmax(1).view(1,-1)), eps_threshold
     else:
         return torch.tensor([[random.randrange(len(env.action_all))]], dtype=torch.long), eps_threshold
 
@@ -211,9 +210,8 @@ def optimize_model(policy_net,target_net, optimizer, memory, gamma, batch_size):
         param.requires_grad = False
 
     next_state_values = torch.zeros((batch_size),device=device)
-    next_state_values[non_final_idx] = target_net(state_next_batch_nf).max(1)[0]
-    expected_state_action_values = (next_state_values.view(-1,1) * gamma) + reward_batch
-    print(expected_state_action_values.size())
+    next_state_values[non_final_idx] = target_net(state_next_batch_nf.to(device)).max(1)[0]
+    expected_state_action_values = (next_state_values.view(-1,1) * gamma) + reward_batch.to(device)
     loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
     optimizer.zero_grad()
     loss.backward()
@@ -240,8 +238,8 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
     img = torch.from_numpy(img.copy())
     # img_height, img_width, _ = img.shape
 
-    policy_net = DQN_FC()
-    target_net = DQN_FC()
+    policy_net = DQN_FC().to(device)
+    target_net = DQN_FC().to(device)
     target_net.load_state_dict(policy_net.state_dict())
     target_net.eval()
 
@@ -275,11 +273,11 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
             reward = env.step_(action)
             reward = torch.tensor(reward,dtype=torch.float).view(-1,1)
             obs_next = env.render()
-            obs_next = torch.from_numpy(obs_next).view(1,-1)
-            transition = {'s': obs,
-                          'a': action,
+            obs_next = torch.from_numpy(obs_next).view(1,-1).to(device)
+            transition = {'s': obs.to(device),
+                          'a': action.to(device),
                           'r': reward,
-                          "s'": obs_next
+                          "s'": obs_next.to(device)
                           }
             steps_ep += 1
             steps_train += 1
@@ -320,7 +318,7 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
 
         if ep % 5 == 0:
             # return_val, steps_val = eval_policy.sample_episode(policy_net,save_video=True if ep%50==0 else False, n_episodes=5)
-            # qvalue_eval = eval_policy.get_qvalue(policy_net)
+            qvalue_eval = eval_policy.get_qvalue(policy_net)
             logz.log_tabular('Averaged Steps Traning',np.around(np.average(steps_all),decimals=0)) # last 10 episodes
             logz.log_tabular('Averaged Return Training',np.around(np.average(rewards_all),decimals=2))
             # logz.log_tabular('Averaged Steps Validation',np.around(np.average(steps_val),decimals=0))
@@ -445,14 +443,14 @@ def main():
     parser.add_argument('-lr','--learning_rate',default=0.0001,type=float)
     parser.add_argument('--exp_name', required=True)
     parser.add_argument('-bs','--batch_size',default=128,type=int)
-    parser.add_argument('-buffer_size',default=30000,type=int)
+    parser.add_argument('-buffer_size',default=10000,type=int)
     parser.add_argument('-ep','--episodes',default=300,type=int)
     parser.add_argument('-target_update',default=1500,type=int,help='every n gradient steps')
     parser.add_argument('-max_steps',default=400,type=int)
     parser.add_argument('-gamma',default=0.9,type=float)
     parser.add_argument('-eps_start',default=0.9,type=float)
     parser.add_argument('-eps_end',default=0.1,type=float)
-    parser.add_argument('-eps_decay',default=60000,type=float)
+    parser.add_argument('-eps_decay',default=20000,type=float)
     parser.add_argument('-randL','--random_link',action='store_true')
     parser.add_argument('-randT','--random_target',action='store_true')
     parser.add_argument('-rpa','--repeat_actions',action='store_true')

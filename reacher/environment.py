@@ -9,7 +9,6 @@ import numpy as np
 class environment(object):
     def __init__(self,position_control=True,port=19997):
         self.pr = PyRep(port=port)
-        self.pr.launch('reacher.ttt',headless=True)
         self.pr.connect(synchronous=True)
         self.pr.start()
 
@@ -23,7 +22,7 @@ class environment(object):
         self.reacher = self.pr.get_object('reacher')
         self.camera = self.pr.get_camera('Vision_sensor')
 
-        self.increment = 2*pi/180 # to radians
+        self.increment = 5*pi/180 # to radians
         self.action_all = [[self.increment,self.increment],
                       [-self.increment,-self.increment],
                       [0,self.increment],
@@ -41,7 +40,6 @@ class environment(object):
         joints_pos = self.get_joints_pos()
         target_pos = self.target_position()
         obs = np.concatenate((joints_pos,target_pos[0:2]),axis=0)
-        print(obs)
         return obs
 
     def step_(self,action):
