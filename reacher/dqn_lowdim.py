@@ -208,7 +208,6 @@ def optimize_model(policy_net,target_net, optimizer, memory, gamma, batch_size):
     non_final_idx = torch.tensor(non_final_idx,dtype=torch.long)
     state_next_batch_nf = state_next_batch[non_final_idx]
     state_action_values = policy_net((state_batch)).gather(1, action_batch)
-
     for param in target_net.parameters():
         param.requires_grad = False
 
@@ -450,7 +449,7 @@ def main():
     parser.add_argument('-ep','--episodes',default=1000,type=int)
     parser.add_argument('-target_update',default=3000,type=int,help='every n gradient steps')
     parser.add_argument('-max_steps',default=400,type=int)
-    parser.add_argument('-gamma',default=0.9,type=float)
+    parser.add_argument('-gamma',default=0.99,type=float)
     parser.add_argument('-eps_start',default=0.9,type=float)
     parser.add_argument('-eps_end',default=0.1,type=float)
     parser.add_argument('-eps_decay',default=30000,type=float)

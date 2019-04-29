@@ -71,11 +71,12 @@ class environment(object):
         if dist_ee_target < 0.1:
         # self.dist_target == self.dist_end_effector and self.or_target == self.or_end_effector:
             # +0.125>self.dist_end_effector>-0.125 and +2>self.or_end_effector>-2
-            reward = 10
+            reward = 1
             self.done = True
         else:
-            reward = exp(-0.5*dist_ee_target)
-            # reward = -1
+            reward = -dist_ee_target
+            #reward = exp(-0.5*dist_ee_target)
+            #reward = -1
 
         # obs = self.camera.capture_rgb()
 
