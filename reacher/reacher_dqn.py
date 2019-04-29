@@ -80,6 +80,7 @@ class evaluation(object):
     def __init__(self, env, expdir, n_states=20):
         self.states_eval = []
         self.env = env
+        self.imtovid = im_to_vid(expdir)
         self.expdir = expdir
         self.ep = 0
         self.resize = T.Compose([T.ToPILImage(),
@@ -133,8 +134,7 @@ class evaluation(object):
 
     def save_ep_video(self,imgs):
         self.ep += 1
-        im_to_vid = im_to_vid(self.expdir)
-        im_to_vid.from_list(imgs,self.ep)
+        self.imtovid.from_list(imgs,self.ep)
 
     def record_episode(self,img_all):
         logdir = os.path.expanduser('~') + '/robotics_drl/reacher/' + self.expdir + '/episode%s'%(self.ep)
@@ -156,7 +156,7 @@ def select_actions(state,eps_start,eps_end,eps_decay,steps_done,policy_net):
         policy_net.eval()
         return policy_net(state).argmax(1).view(1,-1), eps_threshold
     else:
-        return torch.tensor([[random.randrange(len(env.action_all))]], dtype=torch.long), eps_threshold
+        return torch.tensor([[random.randrange(8)]], dtype=torch.long), eps_threshold
 
 def optimize_model(policy_net,target_net, optimizer, memory, gamma, batch_size):
     if memory.__len__() < batch_size*100:
@@ -302,7 +302,7 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
         sampling_time += end_time-start_time
         sampling_time /= ep
 
-        if ep % 20 == 0:
+        if ep % 25 == 0:
             return_val, steps_val = eval_policy.sample_episode(policy_net,save_video=True if ep%500==0 else False, n_episodes=5)
             qvalue_eval = eval_policy.get_qvalue(policy_net)
             logz.log_tabular('Averaged Steps Traning',np.around(np.average(steps_all),decimals=0)) # last 10 episodes
