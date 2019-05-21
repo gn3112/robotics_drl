@@ -53,8 +53,8 @@ class environment(object):
             joints_pos = self.get_joints_pos()
             joint1_pos = joints_pos[0]
             joint2_pos = joints_pos[1]
-            self.joint1.set_angle(joint1_pos + position_all[0]) # radians
-            self.joint2.set_angle(joint2_pos + position_all[1])
+            self.joint1.set_target_angle(joint1_pos + position_all[0]) # radians
+            self.joint2.set_target_angle(joint2_pos + position_all[1])
 
         self.pr.step()
         ee_pos = self.end_effector_pos()
@@ -68,8 +68,8 @@ class environment(object):
         #
         # self.dist_target = sqrt((self.pos_target[0])**2 + (self.pos_target[1])**2)
         # self.dist_end_effector = sqrt((self.pos_end_effector[0])**2 + (self.pos_end_effector[1])**2)
-
-        if dist_ee_target < 0.1:
+        print(dist_ee_target)
+        if dist_ee_target < 0.13:
         # self.dist_target == self.dist_end_effector and self.or_target == self.or_end_effector:
             # +0.125>self.dist_end_effector>-0.125 and +2>self.or_end_effector>-2
             self.reached = 1
@@ -94,6 +94,11 @@ class environment(object):
         self.joint1_pos = self.joint1.get_angle()
         self.joint2_pos = self.joint2.get_angle()
         return [self.joint1_pos,self.joint2_pos]
+
+    def get_joints_vel(self):
+        self.joint1_vel = self.joint1.get_velocity(1)
+        self.joint2_vel = self.joint2.get_velocity(1)
+        return [self.joint1_vel*180/pi,self.joint2_vel*180/pi]
 
     def reset_target_position(self,random_=False,x=0.5,y=0.5):
         if random_ == True:
