@@ -331,10 +331,8 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
             logz.dump_tabular()
             steps_all = []
             rewards_all = []
+            logz.save_pytorch_model(policy_net.state_dict())
 
-
-
-    logz.save_pytorch_model(policy_net.state_dict())
     env.terminate()
 
     # for update in range(policy_update):
