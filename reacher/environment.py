@@ -38,24 +38,13 @@ class environment(object):
 
     def get_obs(self):
         joints_pos = self.get_joints_pos()
+        joints_vel = self.get_joints_vel()
         target_pos = self.target_position()
-        obs = np.concatenate((joints_pos,target_pos[0:2]),axis=0)
+        ee_pos = self.end_effector_pos()
+        obs = np.concatenate((joints_pos,joints_vel,ee_pos[0:2],target_pos[0:2]),axis=0)
         return obs
 
     def step_(self,action):
-        if self.position_control != True:
-            velocity_all = self.action_all[action]
-            #TO DO
-            self.joint1.set_joint_target_velocity(velocity_all[0]) # radians/s
-            self.joint2.set_joint_target_velocity(velocity_all[1])
-        else:
-            position_all = self.action_all[action]
-            joints_pos = self.get_joints_pos()
-            joint1_pos = joints_pos[0]
-            joint2_pos = joints_pos[1]
-            self.joint1.set_joint_position(joint1_pos + position_all[0], allow_force_mode=False) # radians
-            self.joint2.set_joint_position(joint2_pos + position_all[1], allow_force_mode=False)
-
         reward_all=0
         for action_rep in range(3):
             if self.position_control != True:
@@ -68,8 +57,8 @@ class environment(object):
                 joints_pos = self.get_joints_pos()
                 joint1_pos = joints_pos[0]
                 joint2_pos = joints_pos[1]
-                self.joint1.set_joint_position(joint1_pos + position_all[0], allow_force_mode=False) # radians
-                self.joint2.set_joint_position(joint2_pos + position_all[1], allow_force_mode=False)
+                self.joint1.set_joint_target_position(joint1_pos + position_all[0]) # radians
+                self.joint2.set_joint_target_position(joint2_pos + position_all[1])
 
             self.pr.step()
             ee_pos = self.end_effector_pos()
@@ -83,7 +72,7 @@ class environment(object):
             #
             # self.dist_target = sqrt((self.pos_target[0])**2 + (self.pos_target[1])**2)
             # self.dist_end_effector = sqrt((self.pos_end_effector[0])**2 + (self.pos_end_effector[1])**2)
-            if dist_ee_target < 0.1:
+            if dist_ee_target < 0.12:
             # self.dist_target == self.dist_end_effector and self.or_target == self.or_end_effector:
                 # +0.125>self.dist_end_effector>-0.125 and +2>self.or_end_effector>-2
                 reward = 1
@@ -107,6 +96,11 @@ class environment(object):
     def get_joints_pos(self):
         self.joint1_pos = self.joint1.get_joint_position()
         self.joint2_pos = self.joint2.get_joint_position()
+        return [self.joint1_pos,self.joint2_pos]
+
+    def get_joint_vel(self):
+        self.joint1_vel = self.joint1.get_joint_velocity()
+        self.joint2_vel = self.joint2.get_joint_velocity()
         return [self.joint1_pos,self.joint2_pos]
 
     def reset_target_position(self,random_=False,x=0.5,y=0.5):
@@ -142,8 +136,8 @@ class environment(object):
             joint1_pos = random.random()*2*pi
             joint2_pos = random.random()*2*pi
 
-        self.joint1.set_joint_position(joint1_pos,allow_force_mode=False) # radians
-        self.joint2.set_joint_position(joint2_pos,allow_force_mode=False)
+        self.joint1.set_joint_position(joint1_pos,allow_force_mode=True) # radians
+        self.joint2.set_joint_position(joint2_pos,allow_force_mode=True)
         self.pr.step()
 
     def display(self):
