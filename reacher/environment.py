@@ -98,7 +98,7 @@ class environment(object):
         self.joint2_pos = self.joint2.get_joint_position()
         return [self.joint1_pos,self.joint2_pos]
 
-    def get_joint_vel(self):
+    def get_joints_vel(self):
         self.joint1_vel = self.joint1.get_joint_velocity()
         self.joint2_vel = self.joint2.get_joint_velocity()
         return [self.joint1_pos,self.joint2_pos]
