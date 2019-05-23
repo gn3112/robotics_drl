@@ -101,7 +101,7 @@ class environment(object):
     def get_joints_vel(self):
         self.joint1_vel = self.joint1.get_joint_velocity()
         self.joint2_vel = self.joint2.get_joint_velocity()
-        return [self.joint1_pos,self.joint2_pos]
+        return [self.joint1_vel,self.joint2_vel]
 
     def reset_target_position(self,random_=False,x=0.5,y=0.5):
         if random_ == True:
