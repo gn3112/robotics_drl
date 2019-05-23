@@ -152,10 +152,14 @@ class environment(object):
         steps_all = []
         for _ in range(episodes):
             while True:
-                action = random.randrange(len(self.action_all))
-                reward = self.step_(action)
-                steps += 1
+                for _ in range(4):
+                    action = random.randrange(len(self.action_all))
+                    reward = self.step_(action)
 
+                steps += 1
+                if steps == 40:
+                    break
+                    
                 if reward == 1:
                     steps_all.append(steps)
                     break
