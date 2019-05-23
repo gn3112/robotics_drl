@@ -148,9 +148,9 @@ class environment(object):
         plt.pause(0.01)
 
     def random_agent(self,episodes=10):
-        steps = 0
         steps_all = []
         for _ in range(episodes):
+            steps = 0
             while True:
                 for _ in range(4):
                     action = random.randrange(len(self.action_all))
