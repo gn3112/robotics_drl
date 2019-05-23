@@ -22,7 +22,7 @@ class environment(object):
         self.joint2 = self.pr.get_joint('link_2')
         self.reacher = self.pr.get_object('reacher')
         self.camera = self.pr.get_vision_sensor('Vision_sensor')
-        self.increment = 5*pi/180 # to radians
+        self.increment = 2*pi/180 # to radians
         self.action_all = [[self.increment,self.increment],
                       [-self.increment,-self.increment],
                       [0,self.increment],
@@ -46,7 +46,7 @@ class environment(object):
 
     def step_(self,action):
         reward_all=0
-        for action_rep in range(3):
+        for action_rep in range(4):
             if self.position_control != True:
                 velocity_all = self.action_all[action]
                 #TO DO
