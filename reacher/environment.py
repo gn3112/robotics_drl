@@ -61,29 +61,18 @@ class environment(object):
                 self.joint2.set_joint_target_position(joint2_pos + position_all[1])
 
             self.pr.step()
-            ee_pos = self.end_effector_pos()
-            # target_pos = self.target_position()
-            dist_ee_target = sqrt((ee_pos[0] - self.target_pos[0])**2 + \
-            (ee_pos[1] - self.target_pos[1])**2)
-            # self.pos_target = self.target.get_position:()
-            # self.pos_end_effector = self.end_effector.get_position(relative_to=self.target)
-            # self.or_target = self.target.get_orientation()
-            # self.or_end_effector = self.end_effector.get_orientation(relative_to=self.target)
-            #
-            # self.dist_target = sqrt((self.pos_target[0])**2 + (self.pos_target[1])**2)
-            # self.dist_end_effector = sqrt((self.pos_end_effector[0])**2 + (self.pos_end_effector[1])**2)
-            if dist_ee_target < 0.12:
-            # self.dist_target == self.dist_end_effector and self.or_target == self.or_end_effector:
-                # +0.125>self.dist_end_effector>-0.125 and +2>self.or_end_effector>-2
-                reward = 1
-                self.done = True
-                break
-            else:
-                reward = -dist_ee_target/10
-                # reward = -1
-            reward_all += reward
-            # obs = self.camera.capture_rgb()
 
+        ee_pos = self.end_effector_pos()
+        dist_ee_target = sqrt((ee_pos[0] - self.target_pos[0])**2 + \
+        (ee_pos[1] - self.target_pos[1])**2)
+
+        if dist_ee_target < 0.12:
+            reward = 1
+            self.done = True
+            break
+        else:
+            reward = -dist_ee_target/10
+        
         return reward_all, self.done
 
 
@@ -152,14 +141,13 @@ class environment(object):
         for _ in range(episodes):
             steps = 0
             while True:
-                for _ in range(4):
-                    action = random.randrange(len(self.action_all))
-                    reward = self.step_(action)
+                action = random.randrange(len(self.action_all))
+                reward = self.step_(action)
 
                 steps += 1
                 if steps == 40:
                     break
-                    
+
                 if reward == 1:
                     steps_all.append(steps)
                     break
