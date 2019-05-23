@@ -69,7 +69,6 @@ class environment(object):
         if dist_ee_target < 0.12:
             reward = 1
             self.done = True
-            break
         else:
             reward = -dist_ee_target/10
         
