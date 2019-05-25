@@ -104,19 +104,19 @@ class environment(object):
             y_min = 0
             y = random.random()*(y_max-y_min) + y_min
 
-        quadrant = random.randint(1,4)
-        if quadrant == 1:
-            x = -x
-            y = -y
-        elif quadrant == 2:
-            x = -x
-            y = y
-        elif quadrant == 3:
-            x = x
-            y = -y
-        elif quadrant == 4:
-            x = x
-            y = y
+            quadrant = random.randint(1,4)
+            if quadrant == 1:
+                x = -x
+                y = -y
+            elif quadrant == 2:
+                x = -x
+                y = y
+            elif quadrant == 3:
+                x = x
+                y = -y
+            elif quadrant == 4:
+                x = x
+                y = y
 
         self.target.set_position([x,y,0.125])
         self.pr.step()
