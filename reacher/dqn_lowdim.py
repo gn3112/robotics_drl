@@ -50,7 +50,7 @@ class DQN_FC(nn.Module):
 
     def __init__(self):
         super(DQN_FC, self).__init__()
-        self.fc1 = nn.Linear(8,128)
+        self.fc1 = nn.Linear(10,128)
         self.fc2 = nn.Linear(128,128)
         self.fc3 = nn.Linear(128, 8)
 
