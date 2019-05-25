@@ -127,8 +127,8 @@ class evaluation(object):
             steps = 0
             return_ = 0
             img_ep = deque([])
-            self.env.reset_robot_position(random_=True)
-            self.env.reset_target_position(random_=False)#add arg here
+            self.env.reset_robot_position(random_=False)
+            self.env.reset_target_position(random_=True)
             while True:
                 obs = (self.env.get_obs())
                 img = self.env.render()
@@ -247,8 +247,6 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
     obs = env.get_obs()
     obs = torch.from_numpy((obs)).view(1,-1)
 
-    steps_ep = 0
-    rewards_ep = 0
     successes = 0
 
     target_upd = 0
@@ -256,8 +254,8 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
     steps_train = 0
 
     for ep in range(1,episodes+1):
-        env.reset_target_position(random_=random_target)
         env.reset_robot_position(random_=random_link)
+        env.reset_target_position(random_=random_target) #target after link reset so vel=0
         rewards_ep = 0
         steps_ep = 0
         steps_all = []
@@ -290,34 +288,31 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
                 rewards_all.append(rewards_ep/steps_ep)
                 steps_all.append(steps_ep)
                 successes += 1
-                env.reset_target_position(random_=random_target)
-                env.reset_robot_position(random_=random_link)
                 break
 
             elif steps_ep == max_steps:
                 rewards_all.append(rewards_ep)
                 steps_all.append(steps_ep)
-                env.reset_target_position(random_=random_target)
-                env.reset_robot_position(random_=random_link)
                 break
 
             status = optimize_model(policy_net, target_net, optimizer, memory, gamma, batch_size)
             if status != False:
                 grad_upd += 1
+                if grad_upd % target_update == 0:# update target network parameters
+                    target_net.load_state_dict(policy_net.state_dict())
+                    target_net.eval()
+                    target_upd += 1
 
-            if grad_upd % target_update == 0: # update target network parameters
-                target_net.load_state_dict(policy_net.state_dict())
-                target_net.eval()
-                target_upd += 1
+
 
         end_time = time.time()
         sampling_time += end_time-start_time
         sampling_time /= ep
 
         if ep % 20 == 0:
-            return_val, steps_val = eval_policy.sample_episode(policy_net,save_video=True if ep%500==0 else False, n_episodes=2)
+            return_val, steps_val = eval_policy.sample_episode(policy_net,save_video=True if ep%500==0 else False, n_episodes=5)
             qvalue_eval = eval_policy.get_qvalue(policy_net)
-            logz.log_tabular('Averaged Steps Training',np.around(np.average(steps_all),decimals=0)) # last 10 episodes
+            logz.log_tabular('Averaged Steps Traning',np.around(np.average(steps_all),decimals=0)) # last 10 episodes
             logz.log_tabular('Averaged Return Training',np.around(np.average(rewards_all),decimals=2))
             logz.log_tabular('Averaged Steps Validation',np.around(np.average(steps_val),decimals=0))
             logz.log_tabular('Averaged Return Validation',np.around(np.average(return_val),decimals=2))
@@ -334,95 +329,6 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
             logz.save_pytorch_model(policy_net.state_dict())
 
     env.terminate()
-
-    # for update in range(policy_update):
-    #     start_time = time.time()
-    #     steps_all = []
-    #     rewards_all = []
-    #     while True: # Sample transitions
-    #        # if len(steps_all) > 21 or (len(steps_all) < 20 and steps_ep%4 == 0):
-    #             #action, eps_threshold = select_actions(obs, eps_start, eps_end,
-    #             #                                      eps_decay, steps_train, policy_net)
-    #             #action = action
-    #
-    #         action, eps_threshold = select_actions(obs, eps_start, eps_end,
-    #                                                    eps_decay, steps_train, policy_net)
-    #         action = action
-    #
-    #         reward = env.step_(action)
-    #         reward = torch.tensor(reward,dtype=torch.float).view(-1,1)
-    #         obs_next = env.render()
-    #         obs_next = resize(np.uint8(obs_next)).unsqueeze(0)
-    #         transition = {'s': obs,
-    #                       'a': action,
-    #                       'r': reward,
-    #                       "s'": obs_next
-    #                       }
-    #         steps_ep += 1
-    #         steps_train += 1
-    #         rewards_ep += reward
-    #
-    #         memory_state = memory.push(transition)
-    #
-    #         obs = env.render()
-    #         obs = resize(np.uint8(obs)).unsqueeze(0)
-    #         if memory_state == 'full':
-    #             # TODO: Disregard last transition if incomplete or complete it
-    #             break
-    #
-    #         if reward == 100:
-    #             rewards_all.append(rewards_ep/steps_ep)
-    #             steps_all.append(steps_ep)
-    #             successes += 1
-    #             rewards_ep = 0
-    #             steps_ep = 0
-    #
-    #             env.reset_target_position(random_=random_target)
-    #             env.reset_robot_position(random_=random_link)
-    #
-    #         elif steps_ep == max_steps:
-    #             rewards_all.append(rewards_ep)
-    #             steps_all.append(steps_ep)
-    #             rewards_ep = 0
-    #             steps_ep = 0
-    #
-    #             env.reset_target_position(random_=random_target)
-    #             env.reset_robot_position(random_=random_link)
-    #
-    #         # if steps%50 == 0:
-    #         #     print('--- Epsilon threshold: ' + str(eps_threshold) + ' Averaged Return: ' + str(reward_avg) + ' ---')
-    #     end_time = time.time()
-    #
-    #     n_iter = memory.__len__()//batch_size
-    #     for epoch in range(n_epoch):
-    #
-    #         for iter in range(n_iter):
-    #             grad_upd += 1
-    #             optimize_model(policy_net, target_net, optimizer, memory, gamma, batch_size)
-    #             if iter % (n_iter//5) == 0 and iter != 0:
-    #                 qvalue_eval = eval_policy.get_qvalue(policy_net)
-    #                 logz.log_tabular('Averaged Steps',np.around(np.average(steps_all),decimals=0))
-    #                 logz.log_tabular('Averaged Rewards',np.around(np.average(rewards_all),decimals=2))
-    #                 logz.log_tabular('Cumulative Successes',successes)
-    #                 logz.log_tabular('Policy update',update)
-    #                 logz.log_tabular('Number of episodes',len(steps_all))
-    #                 logz.log_tabular('Sampling time (s)',(end_time-start_time))
-    #                 logz.log_tabular('Epsilon threshold', eps_threshold)
-    #                 logz.log_tabular('Gradient update', grad_upd )
-    #                 logz.log_tabular('Updates target network', target_upd)
-    #                 logz.log_tabular('Average q-value evaluation', qvalue_eval)
-    #                 logz.dump_tabular()
-    #
-    #             if grad_upd % target_update == 0: # update target network parameters
-    #                 target_net.load_state_dict(policy_net.state_dict())
-    #                 target_net.eval()
-    #                 target_upd += 1
-    #
-    #     memory = Replay_Buffer(buffer_size)
-    #
-    # logz.save_pytorch_model(policy_net.state_dict())
-    # env.terminate()
-
 
 def setup_logger(logdir, locals_):
     # Configure output directory for logging
