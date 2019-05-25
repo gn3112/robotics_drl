@@ -1,6 +1,6 @@
 " Define an environment and build utilities to get state, reward, action..."
 from pyrep import PyRep
-from math import sqrt, pi, exp
+from math import sqrt, pi, exp, cos, sin
 from matplotlib import pyplot as plt
 import random
 from os.path import dirname, join, abspath
@@ -38,14 +38,20 @@ class environment(object):
 
     def get_obs(self):
         joints_pos = self.get_joints_pos()
+        cos_joints = []
+        sin_joints = []
+        for _, theta in enumerate(joints_pos):
+            cos_joints.append(cos(theta))
+            sin_joints.append(sin(theta))
         joints_vel = self.get_joints_vel()
         target_pos = self.target_position()
         ee_pos = self.end_effector_pos()
-        obs = np.concatenate((joints_pos,joints_vel,ee_pos[0:2],target_pos[0:2]),axis=0)
+        targ_vec = np.array(ee_pos) - np.array(target_pos)
+        obs = np.concatenate((cos_joints,sin_joints,joints_pos,joints_vel,targ_vec[0:2]),axis=0)
         return obs
 
     def step_(self,action):
-        for action_rep in range(3):
+        for action_rep in range(1):
             if self.position_control != True:
                 velocity_all = self.action_all[action]
                 #TO DO
