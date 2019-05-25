@@ -22,7 +22,7 @@ class environment(object):
         self.joint2 = self.pr.get_joint('link_2')
         self.reacher = self.pr.get_object('reacher')
         self.camera = self.pr.get_vision_sensor('Vision_sensor')
-        self.increment = 2*pi/180 # to radians
+        self.increment = 4*pi/180 # to radians
         self.action_all = [[self.increment,self.increment],
                       [-self.increment,-self.increment],
                       [0,self.increment],
@@ -45,8 +45,7 @@ class environment(object):
         return obs
 
     def step_(self,action):
-        reward_all=0
-        for action_rep in range(4):
+        for action_rep in range(3):
             if self.position_control != True:
                 velocity_all = self.action_all[action]
                 #TO DO
@@ -66,13 +65,12 @@ class environment(object):
         dist_ee_target = sqrt((ee_pos[0] - self.target_pos[0])**2 + \
         (ee_pos[1] - self.target_pos[1])**2)
 
-        if dist_ee_target < 0.12:
+        if dist_ee_target < 0.125:
             reward = 1
             self.done = True
         else:
             reward = -dist_ee_target/10
-        
-        return reward_all, self.done
+        return reward, self.done
 
 
     def end_effector_pos(self):
