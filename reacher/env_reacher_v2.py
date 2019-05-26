@@ -137,7 +137,7 @@ class environment(object):
         self.target_pos = self.target_position()
         self.done = False
 
-    def reset_robot_position(self,random_==0,joint2_pos=0):#-.6109
+    def reset_robot_position(self,random_=False, joint1_pos=0, joint2_pos=0):
         if random_ == True:
             joint1_pos = random.random()*2*pi
             joint2_pos = random.random()*2*pi
