@@ -33,14 +33,13 @@ class environment(object):
                       [self.increment,-self.increment]]
 
     def threshold_check(self):
-        print(self.joint1.get_joint_mode())
         for _ in range(5):
-            self.target_pos = self.reset_target_position(random_=True)
+            self.reset_target_position(random_=True)
             while True:
+                self.pr.step()
                 ee_pos = self.end_effector_pos()
                 dist_ee_target = sqrt((ee_pos[0] - self.target_pos[0])**2 + \
                 (ee_pos[1] - self.target_pos[1])**2)
-
                 if dist_ee_target < 0.018:
                     reward = 1
                     print('TARGET REACHED')
@@ -69,7 +68,7 @@ class environment(object):
         return obs
 
     def step_(self,action):
-        for action_rep in range(1):
+        for action_rep in range(2):
             if self.position_control != True:
                 velocity_all = self.action_all[action]
                 #TO DO
