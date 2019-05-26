@@ -118,7 +118,7 @@ class evaluation(object):
                 qvalues += policy_net(torch.from_numpy(obs).view(1,-1).to(device)).max(1)[0]
         return (qvalues/len(self.states_eval))[0].item()
 
-    def sample_episode(self,policy_net,save_video=False,n_episodes=5,threshold_ep=40):
+    def sample_episode(self,policy_net,save_video=False,n_episodes=5,threshold_ep=60):
         # 0.1 greedy policy or 100% action from network ?
         policy_net.eval()
         steps_all = []
@@ -175,7 +175,7 @@ def select_actions(state,eps_start,eps_end,eps_decay,steps_done,policy_net,env):
         return torch.tensor([[random.randrange(len(env.action_all))]], dtype=torch.long), eps_threshold
 
 def optimize_model(policy_net,target_net, optimizer, memory, gamma, batch_size):
-    if memory.__len__() < batch_size*100:
+    if memory.__len__() < batch_size*50:
         return False
 
     transitions = memory.sample(batch_size)
