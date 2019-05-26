@@ -33,18 +33,22 @@ class environment(object):
                       [self.increment,-self.increment]]
 
     def threshold_check(self):
-        self.reset_target_position(random_=True)
-        ee_pos = self.end_effector_pos()
-        dist_ee_target = sqrt((ee_pos[0] - self.target_pos[0])**2 + \
-        (ee_pos[1] - self.target_pos[1])**2)
+        print(self.joint1.get_joint_mode())
+        for _ in range(5):
+            self.target_pos = self.reset_target_position(random_=True)
+            while True:
+                ee_pos = self.end_effector_pos()
+                dist_ee_target = sqrt((ee_pos[0] - self.target_pos[0])**2 + \
+                (ee_pos[1] - self.target_pos[1])**2)
 
-        if dist_ee_target < 0.018:
-            reward = 1
-            print('TARGET REACHED')
-            self.done = True
-        else:
-            reward = -dist_ee_target/10
-        print('Reward:%s'%reward)
+                if dist_ee_target < 0.018:
+                    reward = 1
+                    print('TARGET REACHED')
+                    self.done = True
+                    break
+                else:
+                    reward = -dist_ee_target/10
+                print('Reward:%s'%reward)
 
     def render(self):
         img = self.camera.capture_rgb()
@@ -109,7 +113,7 @@ class environment(object):
         self.joint2_vel = self.joint2.get_joint_velocity()
         return [self.joint1_vel,self.joint2_vel]
 
-    def reset_target_position(self,random_=False,x=0.01,y=0.01):
+    def reset_target_position(self,random_=False,x=0.1,y=0.1):
         if random_ == True:
             xy_min = 0.04
             xy_max = 0.1775
