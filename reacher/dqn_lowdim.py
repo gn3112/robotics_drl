@@ -105,8 +105,8 @@ class evaluation(object):
         #                          T.Resize(64, interpolation=Image.BILINEAR),
         #                          T.ToTensor()])
         for _ in range(n_states):
-            self.env.reset_target_position(random_=True)
             self.env.reset_robot_position(random_=True)
+            self.env.reset_target_position(random_=True)
             obs = ((self.env.get_obs()))
             self.states_eval.append(obs)
 
@@ -118,7 +118,7 @@ class evaluation(object):
                 qvalues += policy_net(torch.from_numpy(obs).view(1,-1).to(device)).max(1)[0]
         return (qvalues/len(self.states_eval))[0].item()
 
-    def sample_episode(self,policy_net,save_video=False,n_episodes=5,threshold_ep=100):
+    def sample_episode(self,policy_net,save_video=False,n_episodes=5,threshold_ep=40):
         # 0.1 greedy policy or 100% action from network ?
         policy_net.eval()
         steps_all = []
@@ -127,7 +127,7 @@ class evaluation(object):
             steps = 0
             return_ = 0
             img_ep = deque([])
-            self.env.reset_robot_position(random_=False)
+            self.env.reset_robot_position(random_=True)
             self.env.reset_target_position(random_=True)
             while True:
                 obs = (self.env.get_obs())
