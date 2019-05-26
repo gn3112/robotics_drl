@@ -51,7 +51,7 @@ class environment(object):
         return obs
 
     def step_(self,action):
-        for action_rep in range(1):
+        for action_rep in range(2):
             if self.position_control != True:
                 velocity_all = self.action_all[action]
                 #TO DO
