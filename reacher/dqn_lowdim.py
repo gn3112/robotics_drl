@@ -14,7 +14,7 @@ import numpy as np
 import logz
 import inspect
 from collections import deque
-from environment import environment
+from env_reacher_v2 import environment
 from images_to_video import im_to_vid
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
