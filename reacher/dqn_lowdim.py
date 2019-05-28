@@ -106,7 +106,7 @@ class evaluation(object):
         #                          T.ToTensor()])
         for _ in range(n_states):
             self.env.reset_robot_position(random_=True)
-            self.env.reset_target_position(random_=True)
+            self.env.reset_target_position(random_=False)
             obs = ((self.env.get_obs()))
             self.states_eval.append(obs)
 
@@ -128,7 +128,7 @@ class evaluation(object):
             return_ = 0
             img_ep = deque([])
             self.env.reset_robot_position(random_=True)
-            self.env.reset_target_position(random_=True)
+            self.env.reset_target_position(random_=False)
             while True:
                 obs = (self.env.get_obs())
                 img = self.env.render()
@@ -225,8 +225,8 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
 
     eval_policy = evaluation(env,logdir)
 
-    env.reset_target_position(random_=True)
-    env.reset_robot_position(random_=False)
+    env.reset_robot_position(random_=True)
+    env.reset_target_position(random_=False)
 
     # resize = T.Compose([T.ToPILImage(),
     #                     T.Grayscale(num_output_channels=1),
@@ -298,11 +298,10 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
             status = optimize_model(policy_net, target_net, optimizer, memory, gamma, batch_size)
             if status != False:
                 grad_upd += 1
-                if grad_upd % target_update == 0:# update target network parameters
-                    target_net.load_state_dict(policy_net.state_dict())
+                for param, target_param in zip(policy_net.parameters(),target_net.parameters()):
+                    target_param.data = 0.995 * target_param.data + (1 - 0.995) * param.data
+                    #target_net.load_state_dict(policy_net.state_dict())
                     target_net.eval()
-                    target_upd += 1
-
 
 
         end_time = time.time()
@@ -321,7 +320,6 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
             logz.log_tabular('Sampling time (s)', sampling_time)
             logz.log_tabular('Epsilon threshold', eps_threshold)
             logz.log_tabular('Gradient update', grad_upd )
-            logz.log_tabular('Updates target network', target_upd)
             logz.log_tabular('Average q-value evaluation', qvalue_eval)
             logz.dump_tabular()
             steps_all = []
