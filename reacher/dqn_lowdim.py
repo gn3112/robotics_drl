@@ -3,7 +3,6 @@ from subprocess import Popen
 from matplotlib import pyplot as plt
 import time
 import torch
-from torch import nn
 import torch.nn.functional as F
 from torchvision import transforms as T
 import torch.optim as optim
@@ -16,6 +15,8 @@ import inspect
 from collections import deque
 from env_reacher_v2 import environment
 from images_to_video import im_to_vid
+from models import DQN_FC
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Replay_Buffer(object):
@@ -45,53 +46,6 @@ class Replay_Buffer(object):
 
     def __len__(self):
         return len(self.memory)
-
-class DQN_FC(nn.Module):
-
-    def __init__(self):
-        super(DQN_FC, self).__init__()
-        self.fc1 = nn.Linear(10,128)
-        self.fc2 = nn.Linear(128,128)
-        self.fc3 = nn.Linear(128, 8)
-
-    def forward(self, x):
-        x = F.relu((self.fc1(x.float())))
-        x = F.relu((self.fc2(x)))
-        x = self.fc3(x)
-
-        # x = F.relu(self.bn1(self.conv1(x)))
-        # x = F.relu(self.bn2(self.conv2(x)))
-        # x = F.relu(self.bn3(self.conv3(x)))
-        return x
-
-class DQN(nn.Module):
-
-    def __init__(self,h,w):
-        super(DQN, self).__init__()
-        self.conv1 = nn.Conv2d(1,16,kernel_size=5, stride=2)
-        # self.bn1 = nn.BatchNorm2d(16) # Batch norm for RL 50/50
-        self.conv2 = nn.Conv2d(16,32,kernel_size=5, stride=2)
-        # self.bn2 = nn.BatchNorm2d(32)
-        self.conv3 = nn.Conv2d(32,32,kernel_size=5, stride=2)
-        # self.bn3 = nn.BatchNorm2d(32)
-
-        def conv2d_size_out(size, kernel_size = 5, stride = 2):
-            return (size - (kernel_size - 1) - 1) // stride + 1
-
-        conv_h = conv2d_size_out(conv2d_size_out(conv2d_size_out(h)))
-        conv_w = conv2d_size_out(conv2d_size_out(conv2d_size_out(w)))
-
-        self.fc1 = nn.Linear(conv_h*conv_w*32,8) # dont hardcode num of actions
-
-    def forward(self, x):
-        x = F.relu((self.conv1(x)))
-        x = F.relu((self.conv2(x)))
-        x = F.relu((self.conv3(x)))
-
-        # x = F.relu(self.bn1(self.conv1(x)))
-        # x = F.relu(self.bn2(self.conv2(x)))
-        # x = F.relu(self.bn3(self.conv3(x)))
-        return self.fc1(x.view(x.size(0),-1))
 
 class evaluation(object):
     def __init__(self, env, expdir, n_states=20):
