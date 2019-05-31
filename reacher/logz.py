@@ -1,6 +1,6 @@
 import json
 
-# Code copied and adapted from:
+# Code adapted from:
 # https://github.com/berkeleydeeprlcourse
 
 """
