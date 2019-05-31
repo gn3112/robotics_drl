@@ -7,7 +7,7 @@ from os.path import dirname, join, abspath
 import numpy as np
 
 class environment(object):
-    def __init__(self,position_control=True):
+    def __init__(self,continuous_control=False):
         self.pr = PyRep()
         SCENE_FILE = join(dirname(abspath(__file__)), 'reacher_v2.ttt')
         self.pr.launch(SCENE_FILE,headless=True)
@@ -15,7 +15,7 @@ class environment(object):
 
         self.reached = 0
         self.done = False
-        self.position_control = position_control
+        self.continuous_control = continuous_control
         self.target = self.pr.get_object('target')
         self.end_effector = self.pr.get_dummy('end_effector')
         self.joint1 = self.pr.get_joint('link_1')
@@ -68,12 +68,11 @@ class environment(object):
         return obs
 
     def step_(self,action):
-        for action_rep in range(2):
-            if self.position_control != True:
-                velocity_all = self.action_all[action]
-                #TO DO
-                self.joint1.set_joint_target_velocity(velocity_all[0]) # radians/s
-                self.joint2.set_joint_target_velocity(velocity_all[1])
+        #TODO: change directly from pos to vel without changing scene
+        for action_rep in range(4):
+            if self.continuous_control == True:
+                self.joint1.set_joint_target_velocity(action[0]) # radians/s
+                self.joint2.set_joint_target_velocity(action[1])
             else:
                 position_all = self.action_all[action]
                 joints_pos = self.get_joints_pos()
@@ -144,7 +143,9 @@ class environment(object):
         if random_ == True:
             joint1_pos = random.random()*2*pi
             joint2_pos = random.random()*2*pi
-
+        if self.continuous_control:
+            self.joint1.set_joint_target_velocity(0) # radians/s
+            self.joint2.set_joint_target_velocity(0)
         self.joint1.set_joint_position(joint1_pos,allow_force_mode=True) # radians
         self.joint2.set_joint_position(joint2_pos,allow_force_mode=True)
         self.pr.step()
