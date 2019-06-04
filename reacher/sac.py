@@ -11,7 +11,7 @@ import inspect
 import time
 import os
 
-device = torch.device("gpu" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
 
 # SAC implementation from spinning-up-basic
 
@@ -22,7 +22,7 @@ def setup_logger(logdir,locals_):
     args = inspect.getargspec(train)[0]
     params = {k: locals_[k] if k in locals_ else None for k in args}
     logz.save_hyperparams(params)
-def test(actor,step,env):
+def test(actor,step,env,continuous,vid):
     img_ep = []
     step_ep = 0
     with torch.no_grad():
@@ -37,7 +37,7 @@ def test(actor,step,env):
         step_ep += 1
         if step_ep > 60:
             break
-        state, reward, done = env.step(action.long())
+        state, reward, done = env.step(action.squeeze(dim=0).long())
         total_reward += reward
         img_ep.append(env.render())
     vid.from_list(img_ep,step)
@@ -51,8 +51,8 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     env = Env(continuous=continuous)
     vid = im_to_vid(logdir)
     actor = SoftActor(HIDDEN_SIZE, continuous=continuous).to(device)
-    critic_1 = Critic(HIDDEN_SIZE, 8, state_action=True if continuous else False).to(device)
-    critic_2 = Critic(HIDDEN_SIZE, 8, state_action=True if continuous else False).to(device)
+    critic_1 = Critic(HIDDEN_SIZE, 1, state_action= True if continuous else False).to(device)
+    critic_2 = Critic(HIDDEN_SIZE, 1, state_action= True if continuous else False).to(device)
     value_critic = Critic(HIDDEN_SIZE, 1).to(device)
     target_value_critic = create_target_network(value_critic).to(device)
     actor_optimiser = optim.Adam(actor.parameters(), lr=LEARNING_RATE)
@@ -67,7 +67,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
         if step < UPDATE_START:
           # To improve exploration take actions sampled from a uniform random distribution over actions at the start of training
           if continuous:
-              action = torch.tensor([(3 * random.random() - 1.5),(3 * random.random() - 1.5)])
+              action = torch.tensor([(3 * random.random() - 1.5),(3 * random.random() - 1.5)]).unsqueeze(dim=0)
           else:
               action = torch.tensor(random.randrange(8)).unsqueeze(dim=0)
         else:
@@ -80,7 +80,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
               _, action = torch.max(action_dstr,0)
               action = action.unsqueeze(dim=0).long()
         # Execute a in the environment and observe next state s', reward r, and done signal d to indicate whether s' is terminal
-        next_state, reward, done = env.step(action)#.long
+        next_state, reward, done = env.step(action.squeeze(dim=0))#.long
         # Store (s, a, r, s', d) in replay buffer D
         D.append({'state': state.unsqueeze(dim=0).to(device), 'action': action.to(device), 'reward': torch.tensor([reward]).float().to(device), 'next_state': next_state.unsqueeze(dim=0).to(device), 'done': torch.tensor([done], dtype=torch.float32).to(device)})
         state = next_state
@@ -116,7 +116,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
         if continuous:
             policy = actor(batch['state'])
             action = policy.rsample()  # a(s) is a sample from μ(·|s) which is differentiable wrt θ via the reparameterisation trick
-            weighted_sample_entropy = ENTROPY_WEIGHT * policy.log_prob(action).sum(dim=1)  # Note: in practice it is more numerically stable to calculate the log probability when sampling an action to avoid inverting tanh
+            weighted_sample_entropy = (ENTROPY_WEIGHT * policy.log_prob(action).sum(dim=1)).view(-1,1)  # Note: in practice it is more numerically stable to calculate the log probability when sampling an action to avoid inverting tanh
             y_v = torch.min(critic_1(batch['state'], action.detach()), critic_2(batch['state'], action.detach())) - weighted_sample_entropy.detach()
         else:
             action_dstr = actor(batch['state'])
@@ -156,7 +156,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
       if step > UPDATE_START and step % TEST_INTERVAL == 0:
         actor.eval()
-        total_reward = test(actor, step, env)
+        total_reward = test(actor, step, env, continuous,vid)
         logz.log_tabular('Step', step )
         logz.log_tabular('Validation total_reward', total_reward)
         logz.dump_tabular()

@@ -33,7 +33,7 @@ class TanhNormal(Distribution):
   # Calculates log probability of value using the change-of-variables technique (uses log1p = log(1 + x) for extra numerical stability)
   def log_prob(self, value):
     inv_value = (torch.log1p(value) - torch.log1p(-value)) / 2  # artanh(y)
-    return self.normal.log_prob(inv_value) - torch.log1p(-value.pow(2) + 1e-6)  # log p(f^-1(y)) + log |det(J(f^-1(y)))|
+    return self.normal.log_prob(inv_value).view(-1,1) - torch.log1p(-value.pow(2) + 1e-6)  # log p(f^-1(y)) + log |det(J(f^-1(y)))|
 
   @property
   def mean(self):
@@ -50,11 +50,11 @@ class SoftActor(nn.Module):
 
   def forward(self, state):
     if self.continuous:
-        output_policy = self.policy(state)
-        policy_mean = output_policy[0:2]
-        policy_log_std = output_policy[-1]
+        output_policy = self.policy(state).view(-1,3)
+        policy_mean = output_policy[:,0:2]
+        policy_log_std = output_policy[:,-1]
         policy_log_std = torch.clamp(policy_log_std, min=self.log_std_min, max=self.log_std_max).view(-1,1,1)
-        policy = TanhNormal(policy_mean,policy_log_std.exp()*torch.eye(2).view(policy_log_std.size()[0],2,2))
+        policy = TanhNormal(policy_mean.view(-1,2),(policy_log_std.exp()*torch.eye(2)).view(-1,2,2))
     else:
         policy = self.policy(state)
     return policy
@@ -64,7 +64,7 @@ class Critic(nn.Module):
   def __init__(self, hidden_size, output_size, state_action=False, layer_norm=False):
     super().__init__()
     self.state_action = state_action
-    layers = [nn.Linear(10 + (1 if state_action else 0), hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, output_size)]
+    layers = [nn.Linear(10 + (2 if state_action else 0), hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, output_size)]
     if layer_norm:
       layers = layers[:1] + [nn.LayerNorm(hidden_size)] + layers[1:3] + [nn.LayerNorm(hidden_size)] + layers[3:]  # Insert layer normalisation between fully-connected layers and nonlinearities
     self.value = nn.Sequential(*layers)
