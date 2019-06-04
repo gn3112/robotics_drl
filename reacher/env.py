@@ -1,10 +1,10 @@
-from env_reacher_v2 import environment
+from environment import environment
 import torch
 
 
 class Env():
   def __init__(self,continuous=False):
-    self._env = environment(continuous_control=continuous)
+    self._env = environment(continuous=continuous)
     self.n_step = 0
   def reset(self):
     self._env.reset_robot_position(random_=False)

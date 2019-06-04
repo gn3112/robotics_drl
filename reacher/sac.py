@@ -3,12 +3,11 @@ import random
 import torch
 from torch import optim
 from tqdm import tqdm
-from hyperparams import OFF_POLICY_BATCH_SIZE as BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_STEPS, POLYAK_FACTOR, REPLAY_SIZE, TEST_INTERVAL, UPDATE_INTERVAL, UPDATE_START
 from env import Env
 from models import Critic, SoftActor, create_target_network, update_target_network
-from utils import plot
 from images_to_video import im_to_vid
 import logz
+import inspect
 import time
 import os
 
@@ -191,17 +190,17 @@ def main():
     if not(os.path.exists(logdir)):
         os.makedirs(logdir)
 
-    train(arg.BATCH_SIZE,
-          arg.DISCOUNT,
-          arg.ENTROPY_WEIGHT,
-          arg.HIDDEN_SIZE,
-          arg.LEARNING_RATE,
-          arg.MAX_STEPS,
-          arg.POLYAK_FACTOR,
-          arg.REPLAY_SIZE,
-          arg.TEST_INTERVAL,
-          arg.UPDATE_INTERVAL,
-          arg.UPDATE_START,
+    train(args.BATCH_SIZE,
+          args.DISCOUNT,
+          args.ENTROPY_WEIGHT,
+          args.HIDDEN_SIZE,
+          args.LEARNING_RATE,
+          args.MAX_STEPS,
+          args.POLYAK_FACTOR,
+          args.REPLAY_SIZE,
+          args.TEST_INTERVAL,
+          args.UPDATE_INTERVAL,
+          args.UPDATE_START,
           logdir)
 
 if __name__ == "__main__":
