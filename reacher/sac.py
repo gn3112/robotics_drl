@@ -60,6 +60,12 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     value_critic_optimiser = optim.Adam(value_critic.parameters(), lr=LEARNING_RATE)
     D = deque(maxlen=REPLAY_SIZE)
 
+    #Automatic entropy tuning init
+    target_entropy = -np.prod(2).item() #??
+    log_alpha = torch.zeros(1, requires_grad=True)
+    alpha_optimizer = optim.Adam(log_alpha, lr=LEARNING_RATE)
+
+
     state, done = env.reset(), False
     pbar = tqdm(range(1, MAX_STEPS + 1), unit_scale=1, smoothing=0)
     for step in pbar:
@@ -112,11 +118,22 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
         #batch = {k: torch.cat([d[k] for d in batch], dim=0) for k in batch[0].keys()}
         # Compute targets for Q and V functions
+
         y_q = batch['reward'] + DISCOUNT * (1 - batch['done']) * target_value_critic(batch['next_state'])
         if continuous:
             policy = actor(batch['state'])
             action = policy.rsample()  # a(s) is a sample from μ(·|s) which is differentiable wrt θ via the reparameterisation trick
-            weighted_sample_entropy = (ENTROPY_WEIGHT * policy.log_prob(action).sum(dim=1)).view(-1,1)  # Note: in practice it is more numerically stable to calculate the log probability when sampling an action to avoid inverting tanh
+
+            #Automatic entropy tuning
+            log_pi = policy.log_prob(action).sum(dim=1)
+            alpha_loss = -(log_alpha * (log_pi + target_entropy).detach()).mean()
+            alpha_optimizer.zero_grad()
+            aplha_loss.backward()
+            self.alpha_optimizer.step()
+            alpha = log_alpha.exp()
+
+            weighted_sample_entropy = (alpha * log_pi).view(-1,1)  # Note: in practice it is more numerically stable to calculate the log probability when sampling an action to avoid inverting tanh
+
             y_v = torch.min(critic_1(batch['state'], action.detach()), critic_2(batch['state'], action.detach())) - weighted_sample_entropy.detach()
         else:
             action_dstr = actor(batch['state'])
