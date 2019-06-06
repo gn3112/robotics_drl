@@ -3,7 +3,7 @@ import random
 import torch
 from torch import optim
 from tqdm import tqdm
-from env import Env
+from env_reacher_v2 import environment
 from models import Critic, SoftActor, create_target_network, update_target_network
 from images_to_video import im_to_vid
 import logz
@@ -50,7 +50,7 @@ def optimise(args):
 def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_STEPS,POLYAK_FACTOR, REPLAY_SIZE, TEST_INTERVAL, UPDATE_INTERVAL, UPDATE_START,logdir):
     setup_logger(logdir, locals())
     continuous = True
-    env = Env(continuous=continuous)
+    env = environment(continuous_control=continuous)
     vid = im_to_vid(logdir)
     actor = SoftActor(HIDDEN_SIZE, continuous=continuous).to(device)
     critic_1 = Critic(HIDDEN_SIZE, 1, state_action= True if continuous else False).to(device)
@@ -71,119 +71,128 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     state, done = env.reset(), False
     pbar = tqdm(range(1, MAX_STEPS + 1), unit_scale=1, smoothing=0)
 
-    steps = 0 
+    steps = 0
     for step in pbar:
-      with torch.no_grad():
-        if step < UPDATE_START:
-          # To improve exploration take actions sampled from a uniform random distribution over actions at the start of training
-          if continuous:
-              action = torch.tensor([(3 * random.random() - 1.5),(3 * random.random() - 1.5)]).unsqueeze(dim=0)
-          else:
-              action = torch.tensor(random.randrange(8)).unsqueeze(dim=0)
-        else:
-          # Observe state s and select action a ~ μ(a|s)
-          #action = actor(state).sample()
-          if continuous:
-              action = actor(state.to(device)).sample()
-          else:
-              action_dstr = actor(state.to(device))
-              _, action = torch.max(action_dstr,0)
-              action = action.unsqueeze(dim=0).long()
-        # Execute a in the environment and observe next state s', reward r, and done signal d to indicate whether s' is terminal
-        next_state, reward, done = env.step(action.squeeze(dim=0))#.long
-        # Store (s, a, r, s', d) in replay buffer D
-        D.append({'state': state.unsqueeze(dim=0).to(device), 'action': action.to(device), 'reward': torch.tensor([reward]).float().to(device), 'next_state': next_state.unsqueeze(dim=0).to(device), 'done': torch.tensor([done], dtype=torch.float32).to(device)})
-        state = next_state
-        # If s' is terminal, reset environment state
-        steps += 1 
-        if done or steps>60:
-            steps = 0 
-            state = env.reset()
+        with torch.no_grad():
+            if step < UPDATE_START:
+              # To improve exploration take actions sampled from a uniform random distribution over actions at the start of training
+              if continuous:
+                  action = torch.tensor([(3 * random.random() - 1.5),(3 * random.random() - 1.5)]).unsqueeze(dim=0)
+              else:
+                  action = torch.tensor(random.randrange(8)).unsqueeze(dim=0)
+            else:
+              # Observe state s and select action a ~ μ(a|s)
+              #action = actor(state).sample()
+              if continuous:
+                  action = actor(state.to(device)).sample()
+              else:
+                  action_dstr = actor(state.to(device))
+                  _, action = torch.max(action_dstr,0)
+                  action = action.unsqueeze(dim=0).long()
+            # Execute a in the environment and observe next state s', reward r, and done signal d to indicate whether s' is terminal
+            next_state, reward, done = env.step(action.squeeze(dim=0))#.long
+            # Store (s, a, r, s', d) in replay buffer D
+            D.append({'state': state.unsqueeze(dim=0).to(device), 'action': action.to(device), 'reward': torch.tensor([reward]).float().to(device), 'next_state': next_state.unsqueeze(dim=0).to(device), 'done': torch.tensor([done], dtype=torch.float32).to(device)})
+            state = next_state
+            # If s' is terminal, reset environment state
+            steps += 1
+            if done or steps>60:
+                steps = 0
+                state = env.reset()
 
-      if step > UPDATE_START and step % UPDATE_INTERVAL == 0:
-        # Randomly sample a batch of transitions B = {(s, a, r, s', d)} from D
-        batch = random.sample(D, BATCH_SIZE)
-        state_batch = []
-        action_batch = []
-        reward_batch =  []
-        state_next_batch = []
-        done_batch = []
-        for d in batch:
-            state_batch.append(d['state'])
-            action_batch.append(d['action'])
-            reward_batch.append(d['reward'])
-            state_next_batch.append(d['next_state'])
-            done_batch.append(d['done'])
+        if step > UPDATE_START and step % UPDATE_INTERVAL == 0:
+            # Randomly sample a batch of transitions B = {(s, a, r, s', d)} from D
+            batch = random.sample(D, BATCH_SIZE)
+            state_batch = []
+            action_batch = []
+            reward_batch =  []
+            state_next_batch = []
+            done_batch = []
+            for d in batch:
+                state_batch.append(d['state'])
+                action_batch.append(d['action'])
+                reward_batch.append(d['reward'])
+                state_next_batch.append(d['next_state'])
+                done_batch.append(d['done'])
 
-        batch = {'state':torch.cat(state_batch,dim=0),
-                 'action':torch.cat(action_batch,dim=0),
-                 'reward':torch.cat(reward_batch,dim=0),
-                 'next_state':torch.cat(state_next_batch,dim=0),
-                 'done':torch.cat(done_batch,dim=0)
-                 }
+            batch = {'state':torch.cat(state_batch,dim=0),
+                     'action':torch.cat(action_batch,dim=0),
+                     'reward':torch.cat(reward_batch,dim=0),
+                     'next_state':torch.cat(state_next_batch,dim=0),
+                     'done':torch.cat(done_batch,dim=0)
+                     }
 
-        #batch = {k: torch.cat([d[k] for d in batch], dim=0) for k in batch[0].keys()}
-        # Compute targets for Q and V functions
+            #batch = {k: torch.cat([d[k] for d in batch], dim=0) for k in batch[0].keys()}
+            # Compute targets for Q and V functions
 
-        y_q = batch['reward'] + DISCOUNT * (1 - batch['done']) * target_value_critic(batch['next_state'])
-        if continuous:
-            policy = actor(batch['state'])
-            action = policy.rsample()  # a(s) is a sample from μ(·|s) which is differentiable wrt θ via the reparameterisation trick
-            #Automatic entropy tuning
-            log_pi = policy.log_prob(action).sum(dim=1)
-            alpha_loss = -(log_alpha * (log_pi + target_entropy).detach()).mean()
-            alpha_optimizer.zero_grad()
-            alpha_loss.backward()
-            alpha_optimizer.step()
-            alpha = log_alpha.exp()
-            weighted_sample_entropy = (alpha * log_pi).view(-1,1)  # Note: in practice it is more numerically stable to calculate the log probability when sampling an action to avoid inverting tanh
+            y_q = batch['reward'] + DISCOUNT * (1 - batch['done']) * target_value_critic(batch['next_state'])
+            if continuous:
+                policy = actor(batch['state'])
+                action = policy.rsample()  # a(s) is a sample from μ(·|s) which is differentiable wrt θ via the reparameterisation trick
+                #Automatic entropy tuning
+                log_pi = policy.log_prob(action).sum(dim=1)
+                alpha_loss = -(log_alpha * (log_pi + target_entropy).detach()).mean()
+                alpha_optimizer.zero_grad()
+                alpha_loss.backward()
+                alpha_optimizer.step()
+                alpha = log_alpha.exp()
+                weighted_sample_entropy = (alpha * log_pi).view(-1,1)  # Note: in practice it is more numerically stable to calculate the log probability when sampling an action to avoid inverting tanh
 
-            y_v = torch.min(critic_1(batch['state'], action.detach()), critic_2(batch['state'], action.detach())) - weighted_sample_entropy.detach()
-        else:
-            action_dstr = actor(batch['state'])
-            weighted_sample_entropy = ENTROPY_WEIGHT * torch.log(action_dstr)  # Note: in practice it is more numerically stable to calculate the log probability when sampling an action to avoid inverting tanh
-            a_idx = (batch['action']).view(-1,1).to(device)
-            y_v = torch.min(critic_1(batch['state']).gather(1,a_idx), critic_2(batch['state']).gather(1,a_idx)) - weighted_sample_entropy.detach().gather(1,a_idx)
+                y_v = torch.min(critic_1(batch['state'], action.detach()), critic_2(batch['state'], action.detach())) - weighted_sample_entropy.detach()
+            else:
+                action_dstr = actor(batch['state'])
+                weighted_sample_entropy = ENTROPY_WEIGHT * torch.log(action_dstr)  # Note: in practice it is more numerically stable to calculate the log probability when sampling an action to avoid inverting tanh
+                a_idx = (batch['action']).view(-1,1).to(device)
+                y_v = torch.min(critic_1(batch['state']).gather(1,a_idx), critic_2(batch['state']).gather(1,a_idx)) - weighted_sample_entropy.detach().gather(1,a_idx)
 
-        # Update Q-functions by one step of gradient descent
-        if continuous:
-            value_loss = (critic_1(batch['state'], batch['action']) - y_q).pow(2).mean() + (critic_2(batch['state'], batch['action']) - y_q).pow(2).mean().to(device)
-        else:
-            value_loss = ((critic_1(batch['state']).gather(1,a_idx) - y_q).pow(2).mean() + (critic_2(batch['state']).gather(1,a_idx) - y_q).pow(2).mean()).to(device)
-        critics_optimiser.zero_grad()
-        value_loss.backward()
-        critics_optimiser.step()
+            # Update Q-functions by one step of gradient descent
+            if continuous:
+                q_loss = (critic_1(batch['state'], batch['action']) - y_q).pow(2).mean() + (critic_2(batch['state'], batch['action']) - y_q).pow(2).mean().to(device)
+            else:
+                q_loss = ((critic_1(batch['state']).gather(1,a_idx) - y_q).pow(2).mean() + (critic_2(batch['state']).gather(1,a_idx) - y_q).pow(2).mean()).to(device)
+            critics_optimiser.zero_grad()
+            q_loss.backward()
+            critics_optimiser.step()
 
-        # Update V-function by one step of gradient descent
-        if continuous:
-            value_loss = (value_critic(batch['state']) - y_v).pow(2).mean().to(device)
-        else:
-            value_loss = ((value_critic(batch['state']) - y_v).pow(2).mean()).to(device)
-        value_critic_optimiser.zero_grad()
-        value_loss.backward()
-        value_critic_optimiser.step()
+            # Update V-function by one step of gradient descent
+            if continuous:
+                v_loss = (value_critic(batch['state']) - y_v).pow(2).mean().to(device)
+            else:
+                v_loss = ((value_critic(batch['state']) - y_v).pow(2).mean()).to(device)
+            value_critic_optimiser.zero_grad()
+            v_loss.backward()
+            value_critic_optimiser.step()
 
-        # Update policy by one step of gradient ascent
-        if continuous:
-            policy_loss = (weighted_sample_entropy - critic_1(batch['state'], action)).mean().to(device)
-        else:
-            policy_loss = ((weighted_sample_entropy - critic_1(batch['state'])).sum(dim=1).mean()).to(device)
-        actor_optimiser.zero_grad()
-        policy_loss.backward()
-        actor_optimiser.step()
+            # Update policy by one step of gradient ascent
+            if continuous:
+                policy_loss = (weighted_sample_entropy - critic_1(batch['state'], action)).mean().to(device)
+            else:
+                policy_loss = ((weighted_sample_entropy - critic_1(batch['state'])).sum(dim=1).mean()).to(device)
+            actor_optimiser.zero_grad()
+            policy_loss.backward()
+            actor_optimiser.step()
 
-        # Update target value network
-        update_target_network(value_critic, target_value_critic, POLYAK_FACTOR)
-      
-      #if step > UPDATE_START and step % TEST_INTERVAL == 0:
-       # actor.eval()
-       # total_reward = test(actor, step, env, continuous,vid)
-       # logz.log_tabular('Step', step )
-       # logz.log_tabular('Validation total_reward', total_reward)
-       # logz.dump_tabular()
-       # pbar.set_description('Step: %i | Reward: %f' % (step, total_reward))
+            # Update target value network
+            update_target_network(value_critic, target_value_critic, POLYAK_FACTOR)
 
-       # actor.train()
+        if step > UPDATE_START and step % TEST_INTERVAL == 0: eval_c = True
+        else: eval_c = False
+
+        if eval_c == True and done == True:
+            eval_c = False
+            actor.eval()
+            total_reward = test(actor, step, env, continuous, vid)
+            logz.log_tabular('Step', step )
+            logz.log_tabular('Validation total_reward', total_reward)
+            logz.log_tabular('Q network loss', q_loss.numpy())
+            logz.log_tabular('Value network loss', v_loss.numpy())
+            logz.log_tabular('Policy Loss', policy_loss.numpy())
+            logz.log_tabular('Alpha Loss',alpha_loss.numpy())
+            logz.log_tabular('Log Pi',log_pi.mean().numpy())
+            logz.dump_tabular()
+            pbar.set_description('Step: %i | Reward: %f' % (step, total_reward))
+
+            actor.train()
 
     env.terminate()
 
