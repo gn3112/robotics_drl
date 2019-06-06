@@ -97,9 +97,10 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             # If s' is terminal, reset environment state
             steps += 1
             if done or steps>60:
+                eval_c2 = True
                 steps = 0
                 state = env.reset()
-
+                
         if step > UPDATE_START and step % UPDATE_INTERVAL == 0:
             # Randomly sample a batch of transitions B = {(s, a, r, s', d)} from D
             batch = random.sample(D, BATCH_SIZE)
@@ -177,18 +178,18 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
         if step > UPDATE_START and step % TEST_INTERVAL == 0: eval_c = True
         else: eval_c = False
-
-        if eval_c == True and done == True:
+        if eval_c == True and eval_c2 == True:
             eval_c = False
+            eval_c2 = False 
             actor.eval()
             total_reward = test(actor, step, env, continuous, vid)
             logz.log_tabular('Step', step )
             logz.log_tabular('Validation total_reward', total_reward)
-            logz.log_tabular('Q network loss', q_loss.numpy())
-            logz.log_tabular('Value network loss', v_loss.numpy())
-            logz.log_tabular('Policy Loss', policy_loss.numpy())
-            logz.log_tabular('Alpha Loss',alpha_loss.numpy())
-            logz.log_tabular('Log Pi',log_pi.mean().numpy())
+            logz.log_tabular('Q network loss', q_loss.detach().numpy())
+            logz.log_tabular('Value network loss', v_loss.detach().numpy())
+            logz.log_tabular('Policy Loss', policy_loss.detach().numpy())
+            logz.log_tabular('Alpha Loss',alpha_loss.detach().numpy())
+            logz.log_tabular('Log Pi',log_pi.mean().detach().numpy())
             logz.dump_tabular()
             pbar.set_description('Step: %i | Reward: %f' % (step, total_reward))
 

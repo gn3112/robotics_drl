@@ -95,7 +95,7 @@ class environment(object):
             reward = -dist_ee_target/10
 
         state = self.get_obs()
-        return torch.tensor(state, dtype=torch.float32), reward, done
+        return torch.tensor(state, dtype=torch.float32), reward, self.done
 
 
     def end_effector_pos(self):
