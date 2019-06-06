@@ -3,6 +3,7 @@ from pyrep import PyRep
 from math import sqrt, pi, exp, cos, sin
 from matplotlib import pyplot as plt
 import random
+import torch
 from os.path import dirname, join, abspath
 import numpy as np
 
@@ -67,7 +68,7 @@ class environment(object):
         obs = np.concatenate((cos_joints,sin_joints,joints_pos,joints_vel,targ_vec[0:2]),axis=0)
         return obs
 
-    def step_(self,action):
+    def step(self,action):
         #TODO: change directly from pos to vel without changing scene
         for action_rep in range(4):
             if self.continuous_control == True:
@@ -92,7 +93,9 @@ class environment(object):
             self.done = True
         else:
             reward = -dist_ee_target/10
-        return reward, self.done
+
+        state = self.get_obs()
+        return torch.tensor(state, dtype=torch.float32), reward, done
 
 
     def end_effector_pos(self):
@@ -178,3 +181,9 @@ class environment(object):
     def terminate(self):
         self.pr.start()  # Stop the simulation
         self.pr.shutdown()
+
+    def reset(self):
+        self.reset_robot_position(random_=True)
+        self.reset_target_position(random_=True)
+        state = self.get_obs()
+        return torch.tensor(state, dtype=torch.float32)
