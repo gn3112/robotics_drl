@@ -10,7 +10,7 @@ import logz
 import inspect
 import time
 import os
-
+import numpy as np
 device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
 
 # SAC implementation from spinning-up-basic
@@ -22,6 +22,7 @@ def setup_logger(logdir,locals_):
     args = inspect.getargspec(train)[0]
     params = {k: locals_[k] if k in locals_ else None for k in args}
     logz.save_hyperparams(params)
+
 def test(actor,step,env,continuous,vid):
     img_ep = []
     step_ep = 0
@@ -42,6 +43,7 @@ def test(actor,step,env,continuous,vid):
         img_ep.append(env.render())
     vid.from_list(img_ep,step)
     return total_reward
+
 def optimise(args):
     return None
 
@@ -63,11 +65,13 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     #Automatic entropy tuning init
     target_entropy = -np.prod(2).item() #??
     log_alpha = torch.zeros(1, requires_grad=True)
-    alpha_optimizer = optim.Adam(log_alpha, lr=LEARNING_RATE)
+    alpha_optimizer = optim.Adam([log_alpha], lr=LEARNING_RATE)
 
 
     state, done = env.reset(), False
     pbar = tqdm(range(1, MAX_STEPS + 1), unit_scale=1, smoothing=0)
+
+    steps = 0 
     for step in pbar:
       with torch.no_grad():
         if step < UPDATE_START:
@@ -91,7 +95,9 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
         D.append({'state': state.unsqueeze(dim=0).to(device), 'action': action.to(device), 'reward': torch.tensor([reward]).float().to(device), 'next_state': next_state.unsqueeze(dim=0).to(device), 'done': torch.tensor([done], dtype=torch.float32).to(device)})
         state = next_state
         # If s' is terminal, reset environment state
-        if done:
+        steps += 1 
+        if done or steps>60:
+            steps = 0 
             state = env.reset()
 
       if step > UPDATE_START and step % UPDATE_INTERVAL == 0:
@@ -123,15 +129,13 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
         if continuous:
             policy = actor(batch['state'])
             action = policy.rsample()  # a(s) is a sample from μ(·|s) which is differentiable wrt θ via the reparameterisation trick
-
             #Automatic entropy tuning
             log_pi = policy.log_prob(action).sum(dim=1)
             alpha_loss = -(log_alpha * (log_pi + target_entropy).detach()).mean()
             alpha_optimizer.zero_grad()
-            aplha_loss.backward()
-            self.alpha_optimizer.step()
+            alpha_loss.backward()
+            alpha_optimizer.step()
             alpha = log_alpha.exp()
-
             weighted_sample_entropy = (alpha * log_pi).view(-1,1)  # Note: in practice it is more numerically stable to calculate the log probability when sampling an action to avoid inverting tanh
 
             y_v = torch.min(critic_1(batch['state'], action.detach()), critic_2(batch['state'], action.detach())) - weighted_sample_entropy.detach()
@@ -170,16 +174,16 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
         # Update target value network
         update_target_network(value_critic, target_value_critic, POLYAK_FACTOR)
+      
+      #if step > UPDATE_START and step % TEST_INTERVAL == 0:
+       # actor.eval()
+       # total_reward = test(actor, step, env, continuous,vid)
+       # logz.log_tabular('Step', step )
+       # logz.log_tabular('Validation total_reward', total_reward)
+       # logz.dump_tabular()
+       # pbar.set_description('Step: %i | Reward: %f' % (step, total_reward))
 
-      if step > UPDATE_START and step % TEST_INTERVAL == 0:
-        actor.eval()
-        total_reward = test(actor, step, env, continuous,vid)
-        logz.log_tabular('Step', step )
-        logz.log_tabular('Validation total_reward', total_reward)
-        logz.dump_tabular()
-        pbar.set_description('Step: %i | Reward: %f' % (step, total_reward))
-
-        actor.train()
+       # actor.train()
 
     env.terminate()
 
