@@ -44,7 +44,7 @@ class SoftActor(nn.Module):
   def __init__(self, hidden_size, continuous=False):
     super().__init__()
     self.continuous = continuous
-    self.log_std_min, self.log_std_max = -1.5, 1.5  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
+    self.log_std_min, self.log_std_max = -0.4, 0.4  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
     layers = [nn.Linear(10, hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, 3 if self.continuous else 8)] # nn.Softmax(dim=0))
     self.policy = nn.Sequential(*layers)
 
