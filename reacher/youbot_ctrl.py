@@ -1,9 +1,11 @@
 from pyrep import PyRep
-from math import pi
+from math import pi, sqrt
+import random
+import numpy as np
 from os.path import dirname, join, abspath
 import torch
 
-class youbot_base(object):
+class env(object):
     def __init__(self):
         self.pr = PyRep()
         SCENE_FILE = join(dirname(abspath(__file__)), 'youbot.ttt')
@@ -11,7 +13,7 @@ class youbot_base(object):
         self.pr.start()
 
         self.target = self.pr.get_object('target')
-        self.base_ref = self.pr.get_dummy('youbot_ref')
+        self.base_ref = self.pr.get_dummy('youBot_ref')
         self.youBot = self.pr.get_object('youBot')
         #self.camera = self.pr.get_vision_sensor('Vision_sensor')
 
@@ -23,10 +25,10 @@ class youbot_base(object):
         ForwBackVel_range = [-240,240]
         LeftRightVel_range = [-240,240]
         RotVel_range = [-240,240]
+        self.xy_vel = [0,0]
         self.move_base() #Set velocity to 0
 
         self.done = False
-        self.xy_vel = []
 
     def move_base(self,forwBackVel=0,leftRightVel=0,rotVel=0):
         self.wheel_joint_handle[0].set_joint_target_velocity(-forwBackVel-leftRightVel-rotVel)
@@ -39,7 +41,7 @@ class youbot_base(object):
             pos_next = self.base_ref.get_position()
 
             for i in range(2):
-                self.xy_vel[i] = (pos_next[i] - pos_prev[i]) / 0.05
+                self.xy_vel[i] = ((pos_next[i] - pos_prev[i]) / 0.05)
 
     def render(self):
         img = self.camera.capture_rgb()
@@ -47,11 +49,12 @@ class youbot_base(object):
 
     def get_obs(self):
         obs = []
-        or = self.base_ref.get_orientation()
+        or_ = self.base_ref.get_orientation()
         pos = self.base_ref.get_position()
 
-        vec_to_target = self.target_base.get_position() - self.base_ref.get_position()
-        return obs.append(or, pos, self.xy_vel, vec_to_target)
+        targ_vec = np.array(self.target.get_position()) - np.array(pos)
+        obs = np.concatenate(([or_[0]], pos[0:2], self.xy_vel, targ_vec[0:2]),axis=0)
+        return obs
 
     def step(self,action):
         self.move_base(forwBackVel=action[0],leftRightVel=action[1],rotVel=action[2])
@@ -69,10 +72,10 @@ class youbot_base(object):
         state = self.get_obs()
         return torch.tensor(state, dtype=torch.float32) ,reward, self.done
 
-    def reset(self,, ):
-
-        reset_target_position(self,randT=True)
-
+    def reset(self):
+        self.reset_target_position(randT=True)
+        self.reset_robot_position()
+        self.move_base()
         state = self.get_obs()
         return torch.tensor(state, dtype=torch.float32)
 
