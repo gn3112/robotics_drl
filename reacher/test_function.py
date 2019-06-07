@@ -10,6 +10,7 @@ vid = im_to_vid('test_data')
 env = environment(continuous_control=True)
 steps = 200
 img_ = []
+env.reset()
 for i in range(steps):
     action = [(3 * random.random() - 1.5),(3 * random.random() - 1.5)]
     env.step(action)
@@ -19,6 +20,8 @@ for i in range(steps):
         env.reset()
         print(env.get_obs())
 
+home = os.path.expanduser('~')  
 log_video_dir = os.path.join(home,'robotics_drl/reacher/','test_data/','episodes_video')
 os.chdir(log_video_dir)
 vid.from_list(img_,1)
+env.terminate()

@@ -146,12 +146,17 @@ class environment(object):
         if random_ == True:
             joint1_pos = random.random()*2*pi
             joint2_pos = random.random()*2*pi
+        print('before reset:',self.get_joints_vel())
+        self.joint1._set_joint_position_torque_force_mode(joint1_pos) # radians
+        self.joint2._set_joint_position_torque_force_mode(joint2_pos)
+        self.pr.step()
+        print('after pos reset:',self.get_joints_vel())
         if self.continuous_control:
             self.joint1.set_joint_target_velocity(0) # radians/s
             self.joint2.set_joint_target_velocity(0)
-        self.joint1.set_joint_position(joint1_pos,allow_force_mode=True) # radians
-        self.joint2.set_joint_position(joint2_pos,allow_force_mode=True)
-        self.pr.step()
+        [self.pr.step() for _ in range(5)]
+        print('target vel:',self.joint1.get_joint_target_velocity())
+        print('actual vel:',self.get_joints_vel())
 
     def display(self):
         img = self.camera.capture_rgb()
@@ -183,7 +188,7 @@ class environment(object):
         self.pr.shutdown()
 
     def reset(self):
-        self.reset_robot_position(random_=True)
+        self.reset_robot_position(random_=False)
         self.reset_target_position(random_=True)
         state = self.get_obs()
         return torch.tensor(state, dtype=torch.float32)
