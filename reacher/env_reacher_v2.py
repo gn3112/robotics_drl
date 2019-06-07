@@ -70,7 +70,7 @@ class environment(object):
 
     def step(self,action):
         #TODO: change directly from pos to vel without changing scene
-        for action_rep in range(4):
+        for action_rep in range(1):
             if self.continuous_control == True:
                 self.joint1.set_joint_target_velocity(action[0]) # radians/s
                 self.joint2.set_joint_target_velocity(action[1])

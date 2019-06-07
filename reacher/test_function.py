@@ -13,10 +13,10 @@ img_ = []
 env.reset()
 for i in range(steps):
     action = [(3 * random.random() - 1.5),(3 * random.random() - 1.5)]
-    env.step([40,40])
+    env.step([1.5,1.5])
     img_.append(env.render())
 
-    if i%100 == 0:
+    if i%500 == 0:
         env.reset()
         print(env.get_obs())
 
