@@ -100,7 +100,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 eval_c2 = True
                 steps = 0
                 state = env.reset()
-                
+
         if step > UPDATE_START and step % UPDATE_INTERVAL == 0:
             # Randomly sample a batch of transitions B = {(s, a, r, s', d)} from D
             batch = random.sample(D, BATCH_SIZE)
@@ -180,7 +180,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
         else: eval_c = False
         if eval_c == True and eval_c2 == True:
             eval_c = False
-            eval_c2 = False 
+            eval_c2 = False
             actor.eval()
             total_reward = test(actor, step, env, continuous, vid)
             logz.log_tabular('Step', step )
