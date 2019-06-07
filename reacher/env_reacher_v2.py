@@ -74,6 +74,7 @@ class environment(object):
             if self.continuous_control == True:
                 self.joint1.set_joint_target_velocity(action[0]) # radians/s
                 self.joint2.set_joint_target_velocity(action[1])
+            
             else:
                 position_all = self.action_all[action]
                 joints_pos = self.get_joints_pos()
@@ -83,7 +84,7 @@ class environment(object):
                 self.joint2.set_joint_target_position(joint2_pos + position_all[1])
 
             self.pr.step()
-
+        
         ee_pos = self.end_effector_pos()
         dist_ee_target = sqrt((ee_pos[0] - self.target_pos[0])**2 + \
         (ee_pos[1] - self.target_pos[1])**2)
@@ -107,7 +108,7 @@ class environment(object):
     def get_joints_pos(self):
         self.joint1_pos = self.joint1.get_joint_position()
         self.joint2_pos = self.joint2.get_joint_position()
-        return [self.joint1_pos,self.joint2_pos]
+        return [self.joint1_pos*(180/3.14),self.joint2_pos*(180/3.14)]
 
     def get_joints_vel(self):
         self.joint1_vel = self.joint1.get_joint_velocity()
@@ -145,18 +146,15 @@ class environment(object):
     def reset_robot_position(self,random_=False, joint1_pos=0, joint2_pos=0):
         if random_ == True:
             joint1_pos = random.random()*2*pi
-            joint2_pos = random.random()*2*pi
-        print('before reset:',self.get_joints_vel())
+            joint2_pos = random.random()*2*pi   
+        
+        if self.continuous_control:
+            [self.step([0,0]) for _ in range(5)]
+        
         self.joint1._set_joint_position_torque_force_mode(joint1_pos) # radians
         self.joint2._set_joint_position_torque_force_mode(joint2_pos)
         self.pr.step()
-        print('after pos reset:',self.get_joints_vel())
-        if self.continuous_control:
-            self.joint1.set_joint_target_velocity(0) # radians/s
-            self.joint2.set_joint_target_velocity(0)
-        self.pr.step()
-        print('target vel:',self.joint1.get_joint_target_velocity())
-        print('actual vel:',self.get_joints_vel())
+    
     def display(self):
         img = self.camera.capture_rgb()
         plt.imshow(img,interpolation='nearest')
@@ -187,7 +185,7 @@ class environment(object):
         self.pr.shutdown()
 
     def reset(self):
-        self.reset_robot_position(random_=False)
         self.reset_target_position(random_=True)
+        self.reset_robot_position(random_=False)
         state = self.get_obs()
         return torch.tensor(state, dtype=torch.float32)
