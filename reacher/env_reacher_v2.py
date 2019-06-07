@@ -154,10 +154,9 @@ class environment(object):
         if self.continuous_control:
             self.joint1.set_joint_target_velocity(0) # radians/s
             self.joint2.set_joint_target_velocity(0)
-        [self.pr.step() for _ in range(5)]
+        self.pr.step()
         print('target vel:',self.joint1.get_joint_target_velocity())
         print('actual vel:',self.get_joints_vel())
-
     def display(self):
         img = self.camera.capture_rgb()
         plt.imshow(img,interpolation='nearest')

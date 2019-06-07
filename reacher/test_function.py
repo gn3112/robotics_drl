@@ -8,7 +8,7 @@ if not(os.path.exists('test_data')):
 
 vid = im_to_vid('test_data')
 env = environment(continuous_control=True)
-steps = 200
+steps = 400
 img_ = []
 env.reset()
 for i in range(steps):
@@ -16,7 +16,7 @@ for i in range(steps):
     env.step(action)
     img_.append(env.render())
 
-    if i%50 == 0:
+    if i%100 == 0:
         env.reset()
         print(env.get_obs())
 
