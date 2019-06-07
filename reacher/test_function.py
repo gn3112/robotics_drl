@@ -13,7 +13,7 @@ img_ = []
 env.reset()
 for i in range(steps):
     action = [(3 * random.random() - 1.5),(3 * random.random() - 1.5)]
-    env.step([1,1])
+    env.step([40,40])
     img_.append(env.render())
 
     if i%100 == 0:

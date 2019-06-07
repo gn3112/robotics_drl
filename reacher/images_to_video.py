@@ -13,7 +13,7 @@ class im_to_vid(object):
     def write_video(self,img_array,ep_num,size_img):
         size_img = (size_img[0],size_img[1])
         path = os.path.join(self.log_video_dir,'episode%s.avi'%(ep_num))
-        out = cv2.VideoWriter(path,cv2.VideoWriter_fourcc(*'MPEG'), 10, size_img)
+        out = cv2.VideoWriter(path,cv2.VideoWriter_fourcc(*'MPEG'), 20, size_img)
         for i in range(len(img_array)):
             out.write(np.uint8(img_array[i]))
 
