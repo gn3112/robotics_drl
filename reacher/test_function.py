@@ -23,6 +23,7 @@ for i in range(steps):
         env.reset()
 env.reset()
 print('joint position:',env.get_joints_pos())
+print('joint targ vel:',env.joint1.get_joint_target_velocity())
 print('joint velocity:',env.get_joints_vel())
 print('target position:',env.target_position())
 home = os.path.expanduser('~')

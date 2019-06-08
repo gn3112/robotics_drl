@@ -152,10 +152,10 @@ class environment(object):
         self.joint2._set_joint_position_torque_force_mode(joint2_pos)
         
         if self.continuous_control:
-            for _ in range(5):
+            for _ in range(2):
                 self.joint1.set_joint_target_velocity(0)
                 self.joint2.set_joint_target_velocity(0)
-
+                self.pr.step()
 
     def display(self):
         img = self.camera.capture_rgb()
@@ -188,6 +188,6 @@ class environment(object):
 
     def reset(self):
         self.reset_target_position(random_=True)
-        self.reset_robot_position(random_=False)
+        self.reset_robot_position(random_=True)
         state = self.get_obs()
         return torch.tensor(state, dtype=torch.float32)
