@@ -89,7 +89,7 @@ class environment(object):
         dist_ee_target = sqrt((ee_pos[0] - self.target_pos[0])**2 + \
         (ee_pos[1] - self.target_pos[1])**2)
 
-        if dist_ee_target < 0.018:
+        if dist_ee_target < 0.054:
             reward = 1
             self.done = True
         else:
@@ -115,7 +115,7 @@ class environment(object):
         self.joint2_vel = self.joint2.get_joint_velocity()
         return [self.joint1_vel,self.joint2_vel]
 
-    def reset_target_position(self,random_=False,x=0.5,y=0.5):
+    def reset_target_position(self,random_=False,x=0.4,y=0.4):
         if random_ == True:
             xy_min = 0.12
             xy_max = 0.5325
