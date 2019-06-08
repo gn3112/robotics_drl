@@ -16,7 +16,7 @@ env.reset()
 
 for i in range(steps):
     action = [(3 * random.random() - 1.5),(3 * random.random() - 1.5)]
-    env.step([1.571,1.571])
+    env.step([0.571,0.571])
     print(env.get_joints_pos())
     img_.append(env.render())
     if i%60 == 0 and i != 0:

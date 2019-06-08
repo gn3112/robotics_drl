@@ -31,16 +31,19 @@ def test(actor,step,env,continuous,vid):
     while not done:
         if continuous:
             action = actor(state.to(device)).mean
+            print(env.get_joints_pos())
         else:
             action_dstr = actor(state.to(device))  # Use purely exploitative policy at test time
             _, action = torch.max(action_dstr,0)
 
         step_ep += 1
-        if step_ep > 60:
-            break
+    
         state, reward, done = env.step(action.squeeze(dim=0).long())
         total_reward += reward
         img_ep.append(env.render())
+        if step_ep > 60:
+             break
+    
     vid.from_list(img_ep,step)
     return total_reward
 
@@ -51,6 +54,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     setup_logger(logdir, locals())
     continuous = True
     env = environment(continuous_control=continuous)
+    time.sleep(0.1)
     vid = im_to_vid(logdir)
     actor = SoftActor(HIDDEN_SIZE, continuous=continuous).to(device)
     critic_1 = Critic(HIDDEN_SIZE, 1, state_action= True if continuous else False).to(device)

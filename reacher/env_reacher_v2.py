@@ -108,7 +108,7 @@ class environment(object):
     def get_joints_pos(self):
         self.joint1_pos = self.joint1.get_joint_position()
         self.joint2_pos = self.joint2.get_joint_position()
-        return [self.joint1_pos*(180/3.14),self.joint2_pos*(180/3.14)]
+        return [self.joint1_pos,self.joint2_pos]
 
     def get_joints_vel(self):
         self.joint1_vel = self.joint1.get_joint_velocity()
