@@ -19,8 +19,8 @@ class environment(object):
         self.continuous_control = continuous_control
         self.target = self.pr.get_object('target')
         self.end_effector = self.pr.get_dummy('end_effector')
-        self.joint1 = self.pr.get_joint('link_1')
-        self.joint2 = self.pr.get_joint('link_2')
+        self.joint1 = self.pr.get_joint('joint_1')
+        self.joint2 = self.pr.get_joint('joint_2')
         self.reacher = self.pr.get_object('reacher')
         self.camera = self.pr.get_vision_sensor('Vision_sensor')
         self.increment = 4*pi/180 # to radians
@@ -41,7 +41,7 @@ class environment(object):
                 ee_pos = self.end_effector_pos()
                 dist_ee_target = sqrt((ee_pos[0] - self.target_pos[0])**2 + \
                 (ee_pos[1] - self.target_pos[1])**2)
-                if dist_ee_target < 0.018:
+                if dist_ee_target < 0.054:
                     reward = 1
                     print('TARGET REACHED')
                     self.done = True
@@ -115,10 +115,10 @@ class environment(object):
         self.joint2_vel = self.joint2.get_joint_velocity()
         return [self.joint1_vel,self.joint2_vel]
 
-    def reset_target_position(self,random_=False,x=0.1,y=0.1):
+    def reset_target_position(self,random_=False,x=0.5,y=0.5):
         if random_ == True:
-            xy_min = 0.04
-            xy_max = 0.1775
+            xy_min = 0.12
+            xy_max = 0.5325
             x = random.random()*(xy_max-xy_min) + xy_min
             y_max = sqrt(xy_max**2-x**2)
             y_min = 0
