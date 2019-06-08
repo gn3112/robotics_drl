@@ -32,7 +32,7 @@ class environment(object):
                       [-self.increment,0],
                       [-self.increment,self.increment],
                       [self.increment,-self.increment]]
-
+        
     def threshold_check(self):
         for _ in range(5):
             self.reset_target_position(random_=True)
@@ -148,13 +148,15 @@ class environment(object):
             joint1_pos = random.random()*2*pi
             joint2_pos = random.random()*2*pi   
         
-        if self.continuous_control:
-            [self.step([0,0]) for _ in range(5)]
-        
         self.joint1._set_joint_position_torque_force_mode(joint1_pos) # radians
         self.joint2._set_joint_position_torque_force_mode(joint2_pos)
-        self.pr.step()
-    
+        
+        if self.continuous_control:
+            for _ in range(5):
+                self.joint1.set_joint_target_velocity(0)
+                self.joint2.set_joint_target_velocity(0)
+
+
     def display(self):
         img = self.camera.capture_rgb()
         plt.imshow(img,interpolation='nearest')
