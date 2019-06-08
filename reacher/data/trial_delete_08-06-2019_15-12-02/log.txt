@@ -1,0 +1,4 @@
+Step	Validation total_reward	Q network loss	Value network loss	Policy Loss	Alpha Loss	Log Pi
+1000	-3.5333004130257533	0.07551492	0.035255913	0.78115153	6.738759	2.950179
+2000	nan	nan	nan	nan	nan	nan
+3000	nan	nan	nan	nan	nan	nan

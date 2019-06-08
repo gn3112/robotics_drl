@@ -31,14 +31,16 @@ def test(actor,step,env,continuous,vid):
     while not done:
         if continuous:
             action = actor(state.to(device)).mean
-            print(env.get_joints_pos())
+            #print('Pos:',env.get_joints_pos())
+            print("actions prev:",action)
+            print("Actions:",action.detach().squeeze(dim=0))
         else:
             action_dstr = actor(state.to(device))  # Use purely exploitative policy at test time
             _, action = torch.max(action_dstr,0)
 
         step_ep += 1
     
-        state, reward, done = env.step(action.squeeze(dim=0).long())
+        state, reward, done = env.step(action.detach().squeeze(dim=0))
         total_reward += reward
         img_ep.append(env.render())
         if step_ep > 60:
