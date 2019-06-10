@@ -22,7 +22,7 @@ for i in range(steps):
     prev_joints_pos = np.array(env.agent.get_joint_positions())
     #env.step([velocity_test for _ in range(num_joints)])
     env.step([velocity_test, 0])
-    change_joints_pos = np.abs(prev_joints_pos - np.array(env.agent.get_joint_positions()))
+    change_joints_pos = np.abs(np.abs(prev_joints_pos) - np.abs(np.array(env.agent.get_joint_positions())))
     desired_change_joints_pos = np.array(90*pi/180 * 0.05) # simulation time step of 50ms  
     img_.append(env.render())
 
