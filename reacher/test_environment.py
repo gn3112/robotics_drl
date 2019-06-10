@@ -17,22 +17,29 @@ num_joints = 2
 velocity_test = 90*pi/180
 img_ = []
 env.reset()
-
+error = False
 for i in range(steps):
     prev_joints_pos = np.array(env.agent.get_joint_positions())
-    env.step([velocity_test for _ in range(num_joints)])
+    #env.step([velocity_test for _ in range(num_joints)])
+    env.step([velocity_test, 0])
     change_joints_pos = np.abs(prev_joints_pos - np.array(env.agent.get_joint_positions()))
-    desired_change_joints_pos = np.array(90*pi/180 * 0.05) # simulation time step of 50ms 
-    
+    desired_change_joints_pos = np.array(90*pi/180 * 0.05) # simulation time step of 50ms  
+    img_.append(env.render())
+
     diff_joints_pos = (change_joints_pos - desired_change_joints_pos).sum()
     if diff_joints_pos > 0.01 * velocity_test:
         print(prev_joints_pos)
         print(env.agent.get_joint_positions())
+        error = True
         print("Error in position for given target velocity",diff_joints_pos,env.agent.get_joint_velocities())
     else:
         print("Correct position from target velocity")
     
-    img_.append(env.render())
+    if error == True:
+        frame_error = (img_[-1])
+        frame_error[0:40,0:40] = 0
+        img_[-1] = frame_error
+
     if i%60 == 0 and i != 0:
         env.reset()
         obs = env.get_observation()
