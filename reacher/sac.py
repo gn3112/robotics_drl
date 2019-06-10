@@ -5,12 +5,12 @@ from torch import optim
 from tqdm import tqdm
 from env_reacher_v2 import environment
 from models import Critic, SoftActor, create_target_network, update_target_network
-from images_to_video import im_to_vid
 import logz
 import inspect
 import time
 import os
 import numpy as np
+from drl_evaluation import evaluation_sac
 device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
 
 # SAC implementation from spinning-up-basic
@@ -23,32 +23,6 @@ def setup_logger(logdir,locals_):
     params = {k: locals_[k] if k in locals_ else None for k in args}
     logz.save_hyperparams(params)
 
-def test(actor,step,env,continuous,vid):
-    img_ep = []
-    step_ep = 0
-    with torch.no_grad():
-        state, done, total_reward = env.reset(), False, 0
-    while not done:
-        if continuous:
-            action = actor(state.to(device)).mean
-            #print('Pos:',env.get_joints_pos())
-            print("actions prev:",action)
-            print("Actions:",action.detach().squeeze(dim=0))
-        else:
-            action_dstr = actor(state.to(device))  # Use purely exploitative policy at test time
-            _, action = torch.max(action_dstr,0)
-
-        step_ep += 1
-    
-        state, reward, done = env.step(action.detach().squeeze(dim=0))
-        total_reward += reward
-        img_ep.append(env.render())
-        if step_ep > 60:
-             break
-    
-    vid.from_list(img_ep,step)
-    return total_reward
-
 def optimise(args):
     return None
 
@@ -57,7 +31,6 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     continuous = True
     env = environment(continuous_control=continuous)
     time.sleep(0.1)
-    vid = im_to_vid(logdir)
     actor = SoftActor(HIDDEN_SIZE, continuous=continuous).to(device)
     critic_1 = Critic(HIDDEN_SIZE, 1, state_action= True if continuous else False).to(device)
     critic_2 = Critic(HIDDEN_SIZE, 1, state_action= True if continuous else False).to(device)
@@ -68,11 +41,12 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     value_critic_optimiser = optim.Adam(value_critic.parameters(), lr=LEARNING_RATE)
     D = deque(maxlen=REPLAY_SIZE)
 
+    eval = evaluation_sac(env,logdir)
+
     #Automatic entropy tuning init
-    target_entropy = -np.prod(2).item() #??
+    target_entropy = -np.prod(2).item() # size of action space
     log_alpha = torch.zeros(1, requires_grad=True)
     alpha_optimizer = optim.Adam([log_alpha], lr=LEARNING_RATE)
-
 
     state, done = env.reset(), False
     pbar = tqdm(range(1, MAX_STEPS + 1), unit_scale=1, smoothing=0)
@@ -88,7 +62,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                   action = torch.tensor(random.randrange(8)).unsqueeze(dim=0)
             else:
               # Observe state s and select action a ~ μ(a|s)
-              #action = actor(state).sample()
+              # action = actor(state).sample()
               if continuous:
                   action = actor(state.to(device)).sample()
               else:
@@ -102,8 +76,9 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             state = next_state
             # If s' is terminal, reset environment state
             steps += 1
-            if done or steps>60:
-                eval_c2 = True
+
+            if done or steps>60: #TODO: incorporate step limit in the environment
+                eval_c2 = True #TODO: multiprocess pyrep with a session for each testing and training
                 steps = 0
                 state = env.reset()
 
@@ -136,6 +111,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             if continuous:
                 policy = actor(batch['state'])
                 action = policy.rsample()  # a(s) is a sample from μ(·|s) which is differentiable wrt θ via the reparameterisation trick
+
                 #Automatic entropy tuning
                 log_pi = policy.log_prob(action).sum(dim=1)
                 alpha_loss = -(log_alpha * (log_pi + target_entropy).detach()).mean()
@@ -143,20 +119,20 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 alpha_loss.backward()
                 alpha_optimizer.step()
                 alpha = log_alpha.exp()
-                weighted_sample_entropy = (alpha * log_pi).view(-1,1)  # Note: in practice it is more numerically stable to calculate the log probability when sampling an action to avoid inverting tanh
+                weighted_sample_entropy = (alpha * log_pi).view(-1,1)
 
                 y_v = torch.min(critic_1(batch['state'], action.detach()), critic_2(batch['state'], action.detach())) - weighted_sample_entropy.detach()
+
+                q_loss = (critic_1(batch['state'], batch['action']) - y_q).pow(2).mean() + (critic_2(batch['state'], batch['action']) - y_q).pow(2).mean().to(device)
             else:
                 action_dstr = actor(batch['state'])
                 weighted_sample_entropy = ENTROPY_WEIGHT * torch.log(action_dstr)  # Note: in practice it is more numerically stable to calculate the log probability when sampling an action to avoid inverting tanh
                 a_idx = (batch['action']).view(-1,1).to(device)
                 y_v = torch.min(critic_1(batch['state']).gather(1,a_idx), critic_2(batch['state']).gather(1,a_idx)) - weighted_sample_entropy.detach().gather(1,a_idx)
 
-            # Update Q-functions by one step of gradient descent
-            if continuous:
-                q_loss = (critic_1(batch['state'], batch['action']) - y_q).pow(2).mean() + (critic_2(batch['state'], batch['action']) - y_q).pow(2).mean().to(device)
-            else:
                 q_loss = ((critic_1(batch['state']).gather(1,a_idx) - y_q).pow(2).mean() + (critic_2(batch['state']).gather(1,a_idx) - y_q).pow(2).mean()).to(device)
+            # Update Q-functions by one step of gradient descent
+
             critics_optimiser.zero_grad()
             q_loss.backward()
             critics_optimiser.step()
@@ -166,6 +142,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 v_loss = (value_critic(batch['state']) - y_v).pow(2).mean().to(device)
             else:
                 v_loss = ((value_critic(batch['state']) - y_v).pow(2).mean()).to(device)
+
             value_critic_optimiser.zero_grad()
             v_loss.backward()
             value_critic_optimiser.step()
@@ -175,6 +152,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 policy_loss = (weighted_sample_entropy - critic_1(batch['state'], action)).mean().to(device)
             else:
                 policy_loss = ((weighted_sample_entropy - critic_1(batch['state'])).sum(dim=1).mean()).to(device)
+
             actor_optimiser.zero_grad()
             policy_loss.backward()
             actor_optimiser.step()
@@ -184,22 +162,33 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
         if step > UPDATE_START and step % TEST_INTERVAL == 0: eval_c = True
         else: eval_c = False
+
         if eval_c == True and eval_c2 == True:
             eval_c = False
             eval_c2 = False
             actor.eval()
-            total_reward = test(actor, step, env, continuous, vid)
-            logz.log_tabular('Step', step )
-            logz.log_tabular('Validation total_reward', total_reward)
-            logz.log_tabular('Q network loss', q_loss.detach().numpy())
-            logz.log_tabular('Value network loss', v_loss.detach().numpy())
-            logz.log_tabular('Policy Loss', policy_loss.detach().numpy())
-            logz.log_tabular('Alpha Loss',alpha_loss.detach().numpy())
+            critic_1.eval()
+            critic_2.eval()
+            q_value_eval = eval.get_qvalue(critic_1,critic_2)
+            return_ep, steps_ep = eval.sample_episode(actor)
+
+            logz.log_tabular('Step', step)
+            logz.log_tabular('Validation return', return_ep.mean())
+            logz.log_tabular('Validation steps',steps_ep.mean())
+            logz.log_tabular('Validation return std',return_ep.std())
+            logz.log_tabular('Validation steps std',steps_ep.std())
+            logz.log_tabular('Q-value evaluation',q_value_eval.numpy())
+            logz.log_tabular('Q-network loss', q_loss.detach().numpy())
+            logz.log_tabular('Value-network loss', v_loss.detach().numpy())
+            logz.log_tabular('Policy-network loss', policy_loss.detach().numpy())
+            logz.log_tabular('Alpha loss',alpha_loss.detach().numpy())
             logz.log_tabular('Log Pi',log_pi.mean().detach().numpy())
             logz.dump_tabular()
             pbar.set_description('Step: %i | Reward: %f' % (step, total_reward))
 
             actor.train()
+            critic_1.train()
+            critic_2.train()
 
     env.terminate()
 
