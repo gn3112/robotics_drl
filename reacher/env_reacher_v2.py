@@ -20,7 +20,7 @@ class environment(object):
         self.tip = self.pr.get_dummy('Reacher_tip')
         self.camera = self.pr.get_vision_sensor('Vision_sensor')
         self.agent = self.pr.get_arm(Reacher)
-        
+
         self.done = False
         self.rpa = rpa
         self.increment = 4*pi/180 # to radians
@@ -32,7 +32,7 @@ class environment(object):
                       [-self.increment,0],
                       [-self.increment,self.increment],
                       [self.increment,-self.increment]]
-        
+
     def threshold_check(self):
         for _ in range(5):
             self.reset_target_position(random_=True)
@@ -62,13 +62,13 @@ class environment(object):
         for theta in joints_pos:
             cos_joints.append(cos(theta))
             sin_joints.append(sin(theta))
-        
+
         joints_vel = self.agent.get_joint_velocities()
-        
+
         target_pos = self.target_position()
         tip_pos = self.tip_position()
         tip_target_vec = np.array(tip_pos) - np.array(target_pos)
-        
+
         return np.concatenate((cos_joints, sin_joints, joints_pos, joints_vel, tip_target_vec[0:2]),axis=0)
 
     def step(self,action):
@@ -76,7 +76,7 @@ class environment(object):
         for action_rep in range(self.rpa):
             if self.continuous_control == True:
                 self.agent.set_joint_target_velocities(action) # radians/s
-            
+
             else:
                 position_all = self.action_all[action]
                 joints_pos = self.agent.get_joint_positions()
@@ -134,13 +134,17 @@ class environment(object):
     def reset_robot_position(self,random_=False, joints_pos=[0,0]):
         if random_ == True:
             joints_pos = [random.random()*2*pi for _ in range(2)]
-        
+
         self.agent.set_joint_positions(joints_pos) # radians
-        
+
         if self.continuous_control:
             for _ in range(2):
                 self.agent.set_joint_target_velocities([0,0])
                 self.pr.step()
+
+    def sample_action():
+        return [(3 * random.random() - 1.5),(3 * random.random() - 1.5)]
+
 
     def display(self):
         img = self.camera.capture_rgb()
