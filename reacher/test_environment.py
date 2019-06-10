@@ -12,7 +12,7 @@ if not(os.path.exists('test_data')):
 vid = im_to_vid('test_data')
 env = environment(continuous_control=True)
 time.sleep(0.1)
-steps = 40
+steps = 120
 num_joints = 2
 velocity_test = 90*pi/180
 img_ = []
