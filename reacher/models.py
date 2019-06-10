@@ -1,13 +1,12 @@
 import copy
 import torch
 from torch import nn
-from torch.distributions import Distribution, MultivariateNormal
-
+from torch.distributions import Distribution, Normal
 
 class Actor(nn.Module):
   def __init__(self, hidden_size, stochastic=True, layer_norm=False):
     super().__init__()
-    layers = [nn.Linear(3, hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, 1)]
+    layers = [nn.Linear(3, hidden_size), nn.ReLU(), nn.Linear(hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, 1)]
     if layer_norm:
       layers = layers[:1] + [nn.LayerNorm(hidden_size)] + layers[1:3] + [nn.LayerNorm(hidden_size)] + layers[3:]  # Insert layer normalisation between fully-connected layers and nonlinearities
     self.policy = nn.Sequential(*layers)
@@ -18,11 +17,10 @@ class Actor(nn.Module):
     policy = self.policy(state)
     return policy
 
-
 class TanhNormal(Distribution):
   def __init__(self, loc, scale):
     super().__init__()
-    self.normal = MultivariateNormal(loc, scale)
+    self.normal = Normal(loc, scale)
 
   def sample(self):
     return torch.tanh(self.normal.sample())
@@ -45,16 +43,16 @@ class SoftActor(nn.Module):
     super().__init__()
     self.continuous = continuous
     #self.log_std_min, self.log_std_max = -0.2, 0.2  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
-    layers = [nn.Linear(10, hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, 2 if self.continuous else 8)] # nn.Softmax(dim=0))
+    layers = [nn.Linear(10, hidden_size), nn.ReLU(), nn.Linear(hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, 2 if self.continuous else 8)] # nn.Softmax(dim=0))
     self.policy = nn.Sequential(*layers)
 
-  def forward(self, state):
+  def forward(self, state): # TODO: incorporate std in the network ouput by adding a parallel layer
     if self.continuous:
         output_policy = self.policy(state).view(-1,2)
         policy_mean = output_policy[:,0:2]
         #policy_log_std = output_policy[:,-1]
         #policy_log_std = torch.clamp(policy_log_std, min=self.log_std_min, max=self.log_std_max).view(-1,1,1)
-        policy = TanhNormal(policy_mean.view(-1,2),(0.2*torch.eye(2)).view(-1,2,2))
+        policy = TanhNormal(policy_mean.view(-1,2),(torch.tensor([0.2,0.2])).view(-1,2))
     else:
         policy = self.policy(state)
     return policy
@@ -64,7 +62,7 @@ class Critic(nn.Module):
   def __init__(self, hidden_size, output_size, state_action=False, layer_norm=False):
     super().__init__()
     self.state_action = state_action
-    layers = [nn.Linear(10 + (2 if state_action else 0), hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, output_size)]
+    layers = [nn.Linear(10 + (2 if state_action else 0), hidden_size), nn.ReLU(), nn.Linear(hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, output_size)]
     if layer_norm:
       layers = layers[:1] + [nn.LayerNorm(hidden_size)] + layers[1:3] + [nn.LayerNorm(hidden_size)] + layers[3:]  # Insert layer normalisation between fully-connected layers and nonlinearities
     self.value = nn.Sequential(*layers)
@@ -136,13 +134,11 @@ class DQN(nn.Module):
         # x = F.relu(self.bn3(self.conv3(x)))
         return self.fc1(x.view(x.size(0),-1))
 
-
 def create_target_network(network):
   target_network = copy.deepcopy(network)
   for param in target_network.parameters():
     param.requires_grad = False
   return target_network
-
 
 def update_target_network(network, target_network, polyak_factor):
   for param, target_param in zip(network.parameters(), target_network.parameters()):
