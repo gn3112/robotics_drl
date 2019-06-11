@@ -20,32 +20,36 @@ class evaluation_sac(object):
 
     def get_qvalue(self,critic_1,critic_2):
         qvalues = 0
-        for obs in self.states_eval:
+        for state_action in self.states_eval:
             with torch.no_grad():
-                qvalues += (critic_1(torch.from_numpy(obs).view(1,-1).to(device))[0] + critic_2(torch.from_numpy(obs).view(1,-1).to(device))[0])/2
+                state = torch.from_numpy(state_action[0:10]).view(1,-1)
+                action = torch.from_numpy(state_action[10:13]).view(1,-1)
+                qvalues += critic_1(state,action)[0] + critic_2(state,action)[0]/2
 
-        return (qvalues/len(self.states_eval))[0].item()
+        return (qvalues/len(self.states_eval)).item()
 
     def sample_episode(self,actor,save_video=True,n_episodes=5):
         img_ep = []
-        step_ep = 0
+        steps_all = []
+        return_all = []
+        steps_ep = 0
         with torch.no_grad():
             for ep in range(n_episodes):
-                state, done, total_reward = env.reset(), False, 0
+                state, done, total_reward = self.env.reset(), False, 0
                 while not done:
-                    action = actor(state.to(device)).mean
-                    step_ep += 1
-                    state, reward, done = env.step(action.detach().squeeze(dim=0))
+                    action = actor(torch.tensor(state,dtype=torch.float64)).mean
+                    steps_ep += 1
+                    state, reward, done = self.env.step(action.detach().squeeze(dim=0))
                     total_reward += reward
-                    img_ep.append(env.render())
-                    if step_ep > 60:
-                         break
+                    img_ep.append(self.env.render())
+                    if steps_ep > 60:
+                        break
 
                 if save_video==True: self.save_ep_video(img_ep)
                 steps_all.append(steps_ep)
                 return_all.append(total_reward/steps_ep)
 
-        return np.array(return_ep), np.array(steps_ep)
+        return np.array(return_all), np.array(steps_all)
 
     def save_ep_video(self,imgs):
         self.ep += 1
@@ -86,7 +90,7 @@ class evaluation_dqn(object):
         qvalues = 0
         for _, obs in enumerate(self.states_eval):
             with torch.no_grad():
-                qvalues += policy_net(torch.from_numpy(obs).view(1,-1).to(device)).max(1)[0]
+                qvalues += policy_net(torch.from_numpy(obs).view(1,-1)).max(1)[0]
         return (qvalues/len(self.states_eval))[0].item()
 
     def sample_episode(self,policy_net,save_video=False,n_episodes=5,threshold_ep=60):
@@ -105,7 +109,7 @@ class evaluation_dqn(object):
                 img = self.env.render()
                 img_ep.append(img)
                 with torch.no_grad():
-                    action = policy_net(torch.from_numpy(obs).view(1,-1).to(device)).argmax(1).view(1,-1)
+                    action = policy_net(torch.from_numpy(obs).view(1,-1)).argmax(1).view(1,-1)
                 reward, done = self.env.step_(action)
                 steps += 1
                 return_ += reward

@@ -31,7 +31,7 @@ class TanhNormal(Distribution):
   # Calculates log probability of value using the change-of-variables technique (uses log1p = log(1 + x) for extra numerical stability)
   def log_prob(self, value):
     inv_value = (torch.log1p(value) - torch.log1p(-value)) / 2  # artanh(y)
-    return self.normal.log_prob(inv_value).view(-1,1) - torch.log1p(-value.pow(2) + 1e-6)  # log p(f^-1(y)) + log |det(J(f^-1(y)))|
+    return self.normal.log_prob(inv_value).view(-1,1) - torch.log1p(-value.pow(2) + 1e-6).view(-1,1)  # log p(f^-1(y)) + log |det(J(f^-1(y)))|
 
   @property
   def mean(self):
@@ -53,7 +53,7 @@ class SoftActor(nn.Module):
         policy_mean = output_policy[:,0:self.action_space]
         #policy_log_std = output_policy[:,-1]
         #policy_log_std = torch.clamp(policy_log_std, min=self.log_std_min, max=self.log_std_max).view(-1,1,1)
-        policy = TanhNormal(policy_mean,(torch.tensor([0.2 for _ in range(self.action_space)])).view(-1,self.action_space))
+        policy = TanhNormal(policy_mean,(torch.tensor([0.2 for _ in range(self.action_space)], dtype=torch.float64)).view(-1,self.action_space))
     else:
         policy = self.policy(state)
     return policy

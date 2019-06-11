@@ -34,11 +34,11 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     action_space = env.action_space()
     obs_space = env.observation_space()
 
-    actor = SoftActor(HIDDEN_SIZE, continuous=continuous).to(device)
-    critic_1 = Critic(HIDDEN_SIZE, 1, action_space=action_space, state_action= True if continuous else False).to(device)
-    critic_2 = Critic(HIDDEN_SIZE, 1, action_space=action_space, state_action= True if continuous else False).to(device)
-    value_critic = Critic(HIDDEN_SIZE, 1).to(device)
-    target_value_critic = create_target_network(value_critic).to(device)
+    actor = SoftActor(HIDDEN_SIZE, continuous=continuous).double().to(device)
+    critic_1 = Critic(HIDDEN_SIZE, 1, action_space=action_space, state_action= True if continuous else False).double().to(device)
+    critic_2 = Critic(HIDDEN_SIZE, 1, action_space=action_space, state_action= True if continuous else False).double().to(device)
+    value_critic = Critic(HIDDEN_SIZE, 1).double().to(device)
+    target_value_critic = create_target_network(value_critic).double().to(device)
     actor_optimiser = optim.Adam(actor.parameters(), lr=LEARNING_RATE)
     critics_optimiser = optim.Adam(list(critic_1.parameters()) + list(critic_2.parameters()), lr=LEARNING_RATE)
     value_critic_optimiser = optim.Adam(value_critic.parameters(), lr=LEARNING_RATE)
@@ -48,10 +48,11 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
     #Automatic entropy tuning init
     target_entropy = -np.prod(2).item() # size of action space
-    log_alpha = torch.zeros(1, requires_grad=True)
+    log_alpha = torch.zeros(1, requires_grad=True, device=device)
     alpha_optimizer = optim.Adam([log_alpha], lr=LEARNING_RATE)
 
     state, done = env.reset(), False
+    state = torch.tensor(state,dtype=torch.float64, device=device)
     pbar = tqdm(range(1, MAX_STEPS + 1), unit_scale=1, smoothing=0)
 
     steps = 0
@@ -60,22 +61,24 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             if step < UPDATE_START:
               # To improve exploration take actions sampled from a uniform random distribution over actions at the start of training
               if continuous:
-                  action = torch.tensor([(3 * random.random() - 1.5),(3 * random.random() - 1.5)]).unsqueeze(dim=0)
+                  action = torch.tensor([(3 * random.random() - 1.5),(3 * random.random() - 1.5)], dtype=torch.float64, device=device).unsqueeze(dim=0)
               else:
-                  action = torch.tensor(random.randrange(8)).unsqueeze(dim=0)
+                  action = torch.tensor(random.randrange(8),device=device).unsqueeze(dim=0)
             else:
               # Observe state s and select action a ~ μ(a|s)
               # action = actor(state).sample()
               if continuous:
-                  action = actor(state.to(device)).sample()
+                  action = actor(state).sample().double().to(device)
               else:
                   action_dstr = actor(state.to(device))
                   _, action = torch.max(action_dstr,0)
                   action = action.unsqueeze(dim=0).long()
+
             # Execute a in the environment and observe next state s', reward r, and done signal d to indicate whether s' is terminal
             next_state, reward, done = env.step(action.squeeze(dim=0))#.long
+            next_state = torch.tensor(next_state, dtype=torch.float64, device=device)
             # Store (s, a, r, s', d) in replay buffer D
-            D.append({'state': state.unsqueeze(dim=0).to(device), 'action': action.to(device), 'reward': torch.tensor([reward]).float().to(device), 'next_state': next_state.unsqueeze(dim=0).to(device), 'done': torch.tensor([done], dtype=torch.float32).to(device)})
+            D.append({'state': state.unsqueeze(dim=0), 'action': action, 'reward': torch.tensor([reward],dtype=torch.float64,device=device), 'next_state': next_state.unsqueeze(dim=0), 'done': torch.tensor([done], dtype=torch.float64, device=device)})
             state = next_state
             # If s' is terminal, reset environment state
             steps += 1
@@ -83,7 +86,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             if done or steps>60: #TODO: incorporate step limit in the environment
                 eval_c2 = True #TODO: multiprocess pyrep with a session for each testing and training
                 steps = 0
-                state = env.reset()
+                state = torch.tensor(env.reset(), dtype=torch.float64, device=device)
 
         if step > UPDATE_START and step % UPDATE_INTERVAL == 0:
             # Randomly sample a batch of transitions B = {(s, a, r, s', d)} from D
@@ -117,12 +120,12 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
                 #Automatic entropy tuning
                 log_pi = policy.log_prob(action).sum(dim=1)
-                alpha_loss = -(log_alpha * (log_pi + target_entropy).detach()).mean()
+                alpha_loss = -(log_alpha.double() * (log_pi + target_entropy).double().detach()).mean()
                 alpha_optimizer.zero_grad()
                 alpha_loss.backward()
                 alpha_optimizer.step()
                 alpha = log_alpha.exp()
-                weighted_sample_entropy = (alpha * log_pi).view(-1,1)
+                weighted_sample_entropy = (alpha.double() * log_pi).view(-1,1)
 
                 y_v = torch.min(critic_1(batch['state'], action.detach()), critic_2(batch['state'], action.detach())) - weighted_sample_entropy.detach()
 
@@ -180,14 +183,14 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             logz.log_tabular('Validation steps',steps_ep.mean())
             logz.log_tabular('Validation return std',return_ep.std())
             logz.log_tabular('Validation steps std',steps_ep.std())
-            logz.log_tabular('Q-value evaluation',q_value_eval.numpy())
+            logz.log_tabular('Q-value evaluation',q_value_eval)
             logz.log_tabular('Q-network loss', q_loss.detach().numpy())
             logz.log_tabular('Value-network loss', v_loss.detach().numpy())
             logz.log_tabular('Policy-network loss', policy_loss.detach().numpy())
             logz.log_tabular('Alpha loss',alpha_loss.detach().numpy())
             logz.log_tabular('Log Pi',log_pi.mean().detach().numpy())
             logz.dump_tabular()
-            pbar.set_description('Step: %i | Reward: %f' % (step, total_reward))
+            pbar.set_description('Step: %i | Reward: %f' % (step, return_ep.mean()))
 
             actor.train()
             critic_1.train()

@@ -9,6 +9,7 @@ from os.path import dirname, join, abspath
 import numpy as np
 
 class environment(object):
+<<<<<<< HEAD
     def __init__(self,continuous_control=True, obs_lowdim=True, rpa=1):
         self.pr = PyRep()
         SCENE_FILE = join(dirname(abspath(__file__)), 'reacher_v2.ttt')
@@ -93,11 +94,11 @@ class environment(object):
         tip_target_dist = sqrt((tip_pos[0] - self.target_pos[0])**2 + \
         (tip_pos[1] - self.target_pos[1])**2)
 
-        if tip_target_dist < 0.054:
+        if tip_target_dist < 0.06:
             reward = 1
             self.done = True
         else:
-            reward = -tip_target_dist/10
+            reward = -tip_target_dist/3
 
         state = self.get_observation()
         return state, reward, self.done
@@ -147,7 +148,7 @@ class environment(object):
                 self.agent.set_joint_target_velocities([0,0])
                 self.pr.step()
 
-    def sample_action():
+    def sample_action(self):
         return [(3 * random.random() - 1.5),(3 * random.random() - 1.5)]
 
 
