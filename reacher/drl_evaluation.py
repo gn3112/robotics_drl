@@ -32,17 +32,16 @@ class evaluation_sac(object):
         img_ep = []
         steps_all = []
         return_all = []
-        steps_ep = 0
         with torch.no_grad():
             for ep in range(n_episodes):
-                state, done, total_reward = self.env.reset(), False, 0
-                while not done:
+                state, done, total_reward, steps_ep = self.env.reset(), False, 0, 0
+                while True:
                     action = actor(torch.tensor(state,dtype=torch.float64)).mean
                     steps_ep += 1
                     state, reward, done = self.env.step(action.detach().squeeze(dim=0))
                     total_reward += reward
                     img_ep.append(self.env.render())
-                    if steps_ep > 60:
+                    if steps_ep > 60 or done==True:
                         break
 
                 if save_video==True: self.save_ep_video(img_ep)
