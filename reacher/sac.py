@@ -33,7 +33,6 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     env = ENV.environment(obs_lowdim=OBSERVATION_LOW)
     time.sleep(0.1)
     action_space = env.action_space()
-    print(env.observation_space())
     obs_space = env.observation_space()[0]
 
     actor = SoftActor(HIDDEN_SIZE, action_space, obs_space, continuous=continuous).double().to(device)

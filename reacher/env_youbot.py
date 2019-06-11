@@ -25,13 +25,13 @@ class environment(object):
         self.rpa = rpa
         self.done = False
         self.obs_lowdim = obs_lowdim
-        
+
         ForwBackVel_range = [-240,240]
         LeftRightVel_range = [-240,240]
         RotVel_range = [-240,240]
         self.xy_vel_range = []
         self.xy_vel = [0,0]
-        
+
         self.move_base() #Set velocity to 0
 
     def move_base(self,forwBackVel=0,leftRightVel=0,rotVel=0):
@@ -48,9 +48,8 @@ class environment(object):
                 self.xy_vel[i] = ((pos_next[i] - pos_prev[i]) / 0.05)
 
     def render(self):
-        img = self.camera.capture_rgb()
-        dim = img.shape[0] # (dim,dim,3)
-        return np.reshape(img*256, (-1,dim,dim))
+        img = self.camera.capture_rgb() # (dim,dim,3)
+        return img*256
 
     def get_observation(self):
         if self.obs_lowdim:
