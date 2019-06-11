@@ -16,7 +16,7 @@ class environment(object):
         self.pr.start()
 
         self.continuous_control = continuous_control
-        self.target = self.pr.get_object('Reacher_target')
+        self.target = self.pr.get_object('target')
         self.tip = self.pr.get_dummy('Reacher_tip')
         self.camera = self.pr.get_vision_sensor('Vision_sensor')
         self.agent = self.pr.get_arm(Reacher)
