@@ -29,6 +29,7 @@ def optimise(args):
 def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_STEPS,POLYAK_FACTOR, REPLAY_SIZE, TEST_INTERVAL, UPDATE_INTERVAL, UPDATE_START, ENV, OBSERVATION_LOW, logdir):
     setup_logger(logdir, locals())
     continuous = True
+    ENV = __import__(ENV)
     env = ENV.environment(obs_lowdim=OBSERVATION_LOW)
     time.sleep(0.1)
     action_space = env.action_space()
