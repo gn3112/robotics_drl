@@ -20,8 +20,9 @@ class environment(object):
         self.wheel_joint_handle = []
         joint_name = ['rollingJoint_fl','rollingJoint_rl','rollingJoint_rr','rollingJoint_fr']
         for joint in joint_name:
+            print(joint)
             self.wheel_joint_handle.append(self.pr.get_joint(joint))
-
+            
         self.rpa = rpa
         self.done = False
         self.obs_lowdim = obs_lowdim
@@ -101,7 +102,7 @@ class environment(object):
             x_L, y_L = position
 
         self.youBot.set_position([x_L,y_L,0.095750])
-        self.youBot.set_orientation([orientation,90*pi/180,180*pi/180])
+        self.youBot.set_orientation([-90*pi/180 if orientation<0 else:90*pi/180,orientation,-90*pi/180 if orientation<0 else:90*pi/180])
 
     def terminate(self):
         self.pr.start()  # Stop the simulation
