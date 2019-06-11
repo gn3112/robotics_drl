@@ -9,7 +9,6 @@ from os.path import dirname, join, abspath
 import numpy as np
 
 class environment(object):
-<<<<<<< HEAD
     def __init__(self,continuous_control=True, obs_lowdim=True, rpa=1):
         self.pr = PyRep()
         SCENE_FILE = join(dirname(abspath(__file__)), 'reacher_v2.ttt')
@@ -54,7 +53,7 @@ class environment(object):
 
     def render(self):
         img = self.camera.capture_rgb()
-        dim = img.shape()[0] # Check image dimension here
+        dim = img.shape[0] # (dim,dim,3)
         return np.reshape(img*256, (-1,dim,dim))
 
     def get_observation(self):
@@ -75,7 +74,7 @@ class environment(object):
 
             return np.concatenate((cos_joints, sin_joints, joints_pos, joints_vel, tip_target_vec[0:2]),axis=0)
         else:
-            return self.env.render()
+            return self.render()
 
     def step(self,action):
         #TODO: change directly from pos to vel without changing in scene
@@ -98,7 +97,7 @@ class environment(object):
             reward = 1
             self.done = True
         else:
-            reward = -tip_target_dist/3
+            reward = -tip_target_dist
 
         state = self.get_observation()
         return state, reward, self.done
@@ -194,4 +193,4 @@ class environment(object):
         return 'continuous'
 
     def observation_space(self):
-        return self.env.get_observation().shape()
+        return self.get_observation().shape

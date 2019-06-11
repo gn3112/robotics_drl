@@ -5,7 +5,7 @@ import numpy as np
 from os.path import dirname, join, abspath
 import torch
 
-class env(object):
+class environment(object):
     def __init__(self, obs_lowdim=True, rpa=4):
         self.pr = PyRep()
         SCENE_FILE = join(dirname(abspath(__file__)), 'youbot.ttt')
@@ -15,23 +15,24 @@ class env(object):
         self.target = self.pr.get_object('target')
         self.base_ref = self.pr.get_dummy('youBot_ref')
         self.youBot = self.pr.get_object('youBot')
-        #self.camera = self.pr.get_vision_sensor('Vision_sensor')
+        self.camera = self.pr.get_vision_sensor('Vision_sensor')
 
         self.wheel_joint_handle = []
         joint_name = ['rollingJoint_fl','rollingJoint_rl','rollingJoint_rr','rollingJoint_fr']
         for joint in joint_name:
             self.wheel_joint_handle.append(self.pr.get_joint(joint))
 
+        self.rpa = rpa
+        self.done = False
+        self.obs_lowdim = obs_lowdim
+        
         ForwBackVel_range = [-240,240]
         LeftRightVel_range = [-240,240]
         RotVel_range = [-240,240]
         self.xy_vel_range = []
         self.xy_vel = [0,0]
+        
         self.move_base() #Set velocity to 0
-
-        self.done = False
-        self.rpa = rpa
-        self.obs_lowdim = obs_lowdim
 
     def move_base(self,forwBackVel=0,leftRightVel=0,rotVel=0):
         self.wheel_joint_handle[0].set_joint_target_velocity(-forwBackVel-leftRightVel-rotVel)
@@ -48,7 +49,7 @@ class env(object):
 
     def render(self):
         img = self.camera.capture_rgb()
-        dim = img.shape()[0] # Check image dimension here
+        dim = img.shape[0] # (dim,dim,3)
         return np.reshape(img*256, (-1,dim,dim))
 
     def get_observation(self):
@@ -108,7 +109,7 @@ class env(object):
         self.pr.shutdown()
 
     def sample_action(self):
-        return [(3 * random.random() - 1.5),(3 * random.random() - 1.5)]
+        return [(3 * random.random() - 1.5) for _ in range(self.action_space())]
 
     def rand_bound(self):
         xy_min = 0
@@ -140,4 +141,4 @@ class env(object):
         return 'continuous'
 
     def observation_space(self):
-        return self.env.get_observation().shape()
+        return self.get_observation().shape

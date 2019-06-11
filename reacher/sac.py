@@ -33,12 +33,13 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     env = ENV.environment(obs_lowdim=OBSERVATION_LOW)
     time.sleep(0.1)
     action_space = env.action_space()
-    obs_space = env.observation_space()
+    print(env.observation_space())
+    obs_space = env.observation_space()[0]
 
-    actor = SoftActor(HIDDEN_SIZE, continuous=continuous).double().to(device)
-    critic_1 = Critic(HIDDEN_SIZE, 1, action_space=action_space, state_action= True if continuous else False).double().to(device)
-    critic_2 = Critic(HIDDEN_SIZE, 1, action_space=action_space, state_action= True if continuous else False).double().to(device)
-    value_critic = Critic(HIDDEN_SIZE, 1).double().to(device)
+    actor = SoftActor(HIDDEN_SIZE, action_space, obs_space, continuous=continuous).double().to(device)
+    critic_1 = Critic(HIDDEN_SIZE, 1, obs_space, action_space=action_space, state_action= True if continuous else False).double().to(device)
+    critic_2 = Critic(HIDDEN_SIZE, 1, obs_space, action_space=action_space, state_action= True if continuous else False).double().to(device)
+    value_critic = Critic(HIDDEN_SIZE, 1, obs_space).double().to(device)
     target_value_critic = create_target_network(value_critic).double().to(device)
     actor_optimiser = optim.Adam(actor.parameters(), lr=LEARNING_RATE)
     critics_optimiser = optim.Adam(list(critic_1.parameters()) + list(critic_2.parameters()), lr=LEARNING_RATE)
@@ -48,7 +49,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     eval = evaluation_sac(env,logdir)
 
     #Automatic entropy tuning init
-    target_entropy = -np.prod(2).item() # size of action space
+    target_entropy = -np.prod(action_space).item()
     log_alpha = torch.zeros(1, requires_grad=True, device=device)
     alpha_optimizer = optim.Adam([log_alpha], lr=LEARNING_RATE)
 
@@ -62,7 +63,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             if step < UPDATE_START:
               # To improve exploration take actions sampled from a uniform random distribution over actions at the start of training
               if continuous:
-                  action = torch.tensor([(3 * random.random() - 1.5),(3 * random.random() - 1.5)], dtype=torch.float64, device=device).unsqueeze(dim=0)
+                  action = torch.tensor(env.sample_action(), dtype=torch.float64, device=device).unsqueeze(dim=0)
               else:
                   action = torch.tensor(random.randrange(8),device=device).unsqueeze(dim=0)
             else:
@@ -203,8 +204,8 @@ def main():
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--exp_name', required=True)
-    parses.add_argument('--ENV',required=True,type=str)
-    parses.add_argument('--OBSERVATION_LOW',action='store_true')
+    parser.add_argument('--ENV',required=True,type=str)
+    parser.add_argument('--OBSERVATION_LOW',action='store_true')
     parser.add_argument('-bs','--BATCH_SIZE',default=64,type=int)
     parser.add_argument('--DISCOUNT',default=0.99,type=float)
     parser.add_argument('--ENTROPY_WEIGHT',default=0.2,type=float)
