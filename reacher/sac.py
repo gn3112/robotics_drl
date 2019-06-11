@@ -26,14 +26,17 @@ def setup_logger(logdir,locals_):
 def optimise(args):
     return None
 
-def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_STEPS,POLYAK_FACTOR, REPLAY_SIZE, TEST_INTERVAL, UPDATE_INTERVAL, UPDATE_START,logdir):
+def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_STEPS,POLYAK_FACTOR, REPLAY_SIZE, TEST_INTERVAL, UPDATE_INTERVAL, UPDATE_START, ENV, OBSERVATION_LOW, logdir):
     setup_logger(logdir, locals())
     continuous = True
-    env = environment(continuous_control=continuous)
+    env = ENV.environment(obs_lowdim=OBSERVATION_LOW)
     time.sleep(0.1)
+    action_space = env.action_space()
+    obs_space = env.observation_space()
+
     actor = SoftActor(HIDDEN_SIZE, continuous=continuous).to(device)
-    critic_1 = Critic(HIDDEN_SIZE, 1, state_action= True if continuous else False).to(device)
-    critic_2 = Critic(HIDDEN_SIZE, 1, state_action= True if continuous else False).to(device)
+    critic_1 = Critic(HIDDEN_SIZE, 1, action_space=action_space, state_action= True if continuous else False).to(device)
+    critic_2 = Critic(HIDDEN_SIZE, 1, action_space=action_space, state_action= True if continuous else False).to(device)
     value_critic = Critic(HIDDEN_SIZE, 1).to(device)
     target_value_critic = create_target_network(value_critic).to(device)
     actor_optimiser = optim.Adam(actor.parameters(), lr=LEARNING_RATE)
@@ -196,6 +199,8 @@ def main():
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--exp_name', required=True)
+    parses.add_argument('--ENV',required=True,type=str)
+    parses.add_argument('--OBSERVATION_LOW',action='store_true')
     parser.add_argument('-bs','--BATCH_SIZE',default=64,type=int)
     parser.add_argument('--DISCOUNT',default=0.99,type=float)
     parser.add_argument('--ENTROPY_WEIGHT',default=0.2,type=float)
@@ -227,6 +232,8 @@ def main():
           args.TEST_INTERVAL,
           args.UPDATE_INTERVAL,
           args.UPDATE_START,
+          args.ENV,
+          args.OBSERVATION_LOW,
           logdir)
 
 if __name__ == "__main__":
