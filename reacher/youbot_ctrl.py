@@ -6,7 +6,7 @@ from os.path import dirname, join, abspath
 import torch
 
 class env(object):
-    def __init__(self):
+    def __init__(self, obs_lowdim=True, rpa=4):
         self.pr = PyRep()
         SCENE_FILE = join(dirname(abspath(__file__)), 'youbot.ttt')
         self.pr.launch(SCENE_FILE,headless=True)
@@ -25,17 +25,20 @@ class env(object):
         ForwBackVel_range = [-240,240]
         LeftRightVel_range = [-240,240]
         RotVel_range = [-240,240]
+        self.xy_vel_range = []
         self.xy_vel = [0,0]
         self.move_base() #Set velocity to 0
 
         self.done = False
+        self.rpa = rpa
+        self.obs_lowdim = obs_lowdim
 
     def move_base(self,forwBackVel=0,leftRightVel=0,rotVel=0):
         self.wheel_joint_handle[0].set_joint_target_velocity(-forwBackVel-leftRightVel-rotVel)
         self.wheel_joint_handle[1].set_joint_target_velocity(-forwBackVel+leftRightVel-rotVel)
         self.wheel_joint_handle[2].set_joint_target_velocity(-forwBackVel-leftRightVel+rotVel)
         self.wheel_joint_handle[3].set_joint_target_velocity(-forwBackVel+leftRightVel+rotVel)
-        for rpa in range(5):
+        for _ in range(self.rpa):
             pos_prev = self.base_ref.get_position()
             self.pr.step()
             pos_next = self.base_ref.get_position()
@@ -45,16 +48,19 @@ class env(object):
 
     def render(self):
         img = self.camera.capture_rgb()
-        return img*256
+        dim = img.shape()[0] # Check image dimension here
+        return np.reshape(img*256, (-1,dim,dim))
 
-    def get_obs(self):
-        obs = []
-        or_ = self.base_ref.get_orientation()
-        pos = self.base_ref.get_position()
+    def get_observation(self):
+        if self.obs_lowdim:
+            obs = []
+            or_ = self.base_ref.get_orientation()
+            pos = self.base_ref.get_position()
 
-        targ_vec = np.array(self.target.get_position()) - np.array(pos)
-        obs = np.concatenate(([or_[0]], pos[0:2], self.xy_vel, targ_vec[0:2]),axis=0)
-        return obs
+            targ_vec = np.array(self.target.get_position()) - np.array(pos)
+            return np.concatenate(([or_[0]], pos[0:2], self.xy_vel, targ_vec[0:2]),axis=0)
+        else:
+            return None # This camera is mounted on the robot arm not the top view camera
 
     def step(self,action):
         self.move_base(forwBackVel=action[0],leftRightVel=action[1],rotVel=action[2])
@@ -69,32 +75,40 @@ class env(object):
         else:
             reward = -dist_ee_target/10
 
-        state = self.get_obs()
-        return torch.tensor(state, dtype=torch.float32) ,reward, self.done
+        state = self.get_observation()
+        return state, reward, self.done
 
     def reset(self):
-        self.reset_target_position(randT=True)
-        self.reset_robot_position()
+        self.reset_target_position(random_=True)
+        self.reset_robot_position(random_=True)
         self.move_base()
-        state = self.get_obs()
-        return torch.tensor(state, dtype=torch.float32)
+        state = self.get_observation()
+        return state
 
-    def reset_target_position(self,randT=False, position=[0,0]):
-        if randT:
+    def reset_target_position(self,random_=False, position=[0,0]):
+        if random_:
             x_T,y_T = self.rand_bound()
         else:
             x_T,y_T = position
 
         self.target.set_position([x_T,y_T,0.0275])
 
-    def reset_robot_position(self,position=[0.5,0.5], orientation=0):
-        x_L, y_L = position
+    def reset_robot_position(self,random_=False, position=[0.5,0.5], orientation=0):
+        if random_:
+            x_L, y_L = self.rand_bound() # Make sure target and robot are away from each other?
+            orientation = random.random()*2*pi
+        else:
+            x_L, y_L = position
+
         self.youBot.set_position([x_L,y_L,0.095750])
-        self.youBot.set_orientation([orientation,90,180])
+        self.youBot.set_orientation([orientation,90*pi/180,180*pi/180])
 
     def terminate(self):
         self.pr.start()  # Stop the simulation
         self.pr.shutdown()
+
+    def sample_action(self):
+        return [(3 * random.random() - 1.5),(3 * random.random() - 1.5)]
 
     def rand_bound(self):
         xy_min = 0
@@ -118,3 +132,12 @@ class env(object):
             x = x
             y = y
         return x,y
+
+    def action_space(self):
+        return 3
+
+    def action_type(self):
+        return 'continuous'
+
+    def observation_space(self):
+        return self.env.get_observation().shape()
