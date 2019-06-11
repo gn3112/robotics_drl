@@ -52,8 +52,8 @@ class environment(object):
                 print('Reward:%s'%reward)
 
     def render(self):
-        return self.camera.capture_rgb() # (dim,dim,3)
- 
+        return self.camera.capture_rgb()*256 # (dim,dim,3)
+
     def get_observation(self):
         if self.obs_lowdim:
             joints_pos = self.agent.get_joint_positions()
