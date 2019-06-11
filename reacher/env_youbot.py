@@ -102,7 +102,7 @@ class environment(object):
             x_L, y_L = position
 
         self.youBot.set_position([x_L,y_L,0.095750])
-        self.youBot.set_orientation([-90*pi/180 if orientation<0 else:90*pi/180,orientation,-90*pi/180 if orientation<0 else:90*pi/180])
+        self.youBot.set_orientation([-90*pi/180 if orientation<0 else 90*pi/180,orientation,-90*pi/180 if orientation<0 else 90*pi/180])
 
     def terminate(self):
         self.pr.start()  # Stop the simulation
