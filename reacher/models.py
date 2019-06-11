@@ -39,30 +39,31 @@ class TanhNormal(Distribution):
 
 
 class SoftActor(nn.Module):
-  def __init__(self, hidden_size, continuous=False):
+  def __init__(self, hidden_size, action_space, continuous=False):
     super().__init__()
+    self.action_space = action_space
     self.continuous = continuous
     #self.log_std_min, self.log_std_max = -0.2, 0.2  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
-    layers = [nn.Linear(10, hidden_size), nn.ReLU(), nn.Linear(hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, 2 if self.continuous else 8)] # nn.Softmax(dim=0))
+    layers = [nn.Linear(10, hidden_size), nn.ReLU(), nn.Linear(hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, action_space if self.continuous else 8)] # nn.Softmax(dim=0))
     self.policy = nn.Sequential(*layers)
 
   def forward(self, state): # TODO: incorporate std in the network ouput by adding a parallel layer
     if self.continuous:
-        output_policy = self.policy(state).view(-1,2)
-        policy_mean = output_policy[:,0:2]
+        output_policy = self.policy(state).view(-1,self.action_space)
+        policy_mean = output_policy[:,0:self.action_space]
         #policy_log_std = output_policy[:,-1]
         #policy_log_std = torch.clamp(policy_log_std, min=self.log_std_min, max=self.log_std_max).view(-1,1,1)
-        policy = TanhNormal(policy_mean.view(-1,2),(torch.tensor([0.2,0.2])).view(-1,2))
+        policy = TanhNormal(policy_mean,(torch.tensor([0.2 for _ in range(self.action_space)])).view(-1,self.action_space))
     else:
         policy = self.policy(state)
     return policy
 
 
 class Critic(nn.Module):
-  def __init__(self, hidden_size, output_size, state_action=False, layer_norm=False):
+  def __init__(self, hidden_size, output_size, action_space=0, state_action=False, layer_norm=False):
     super().__init__()
     self.state_action = state_action
-    layers = [nn.Linear(10 + (2 if state_action else 0), hidden_size), nn.ReLU(), nn.Linear(hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, output_size)]
+    layers = [nn.Linear(10 + (action_space if state_action else 0), hidden_size), nn.ReLU(), nn.Linear(hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, output_size)]
     if layer_norm:
       layers = layers[:1] + [nn.LayerNorm(hidden_size)] + layers[1:3] + [nn.LayerNorm(hidden_size)] + layers[3:]  # Insert layer normalisation between fully-connected layers and nonlinearities
     self.value = nn.Sequential(*layers)
