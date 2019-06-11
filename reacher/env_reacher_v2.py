@@ -9,7 +9,7 @@ from os.path import dirname, join, abspath
 import numpy as np
 
 class environment(object):
-    def __init__(self,continuous_control=False, rpa=1):
+    def __init__(self,continuous_control=True, obs_lowdim=True, rpa=1):
         self.pr = PyRep()
         SCENE_FILE = join(dirname(abspath(__file__)), 'reacher_v2.ttt')
         self.pr.launch(SCENE_FILE,headless=True)
@@ -23,6 +23,7 @@ class environment(object):
 
         self.done = False
         self.rpa = rpa
+        self.obs_lowdim = obs_lowdim
         self.increment = 4*pi/180 # to radians
         self.action_all = [[self.increment,self.increment],
                       [-self.increment,-self.increment],
@@ -52,24 +53,28 @@ class environment(object):
 
     def render(self):
         img = self.camera.capture_rgb()
-        return img*256
+        dim = img.shape()[0] # Check image dimension here
+        return np.reshape(img*256, (-1,dim,dim))
 
     def get_observation(self):
-        joints_pos = self.agent.get_joint_positions()
+        if self.obs_lowdim:
+            joints_pos = self.agent.get_joint_positions()
 
-        cos_joints = []
-        sin_joints = []
-        for theta in joints_pos:
-            cos_joints.append(cos(theta))
-            sin_joints.append(sin(theta))
+            cos_joints = []
+            sin_joints = []
+            for theta in joints_pos:
+                cos_joints.append(cos(theta))
+                sin_joints.append(sin(theta))
 
-        joints_vel = self.agent.get_joint_velocities()
+            joints_vel = self.agent.get_joint_velocities()
 
-        target_pos = self.target_position()
-        tip_pos = self.tip_position()
-        tip_target_vec = np.array(tip_pos) - np.array(target_pos)
+            target_pos = self.target_position()
+            tip_pos = self.tip_position()
+            tip_target_vec = np.array(tip_pos) - np.array(target_pos)
 
-        return np.concatenate((cos_joints, sin_joints, joints_pos, joints_vel, tip_target_vec[0:2]),axis=0)
+            return np.concatenate((cos_joints, sin_joints, joints_pos, joints_vel, tip_target_vec[0:2]),axis=0)
+        else:
+            return self.env.render()
 
     def step(self,action):
         #TODO: change directly from pos to vel without changing in scene
@@ -180,3 +185,12 @@ class environment(object):
         self.reset_robot_position(random_=True)
         state = self.get_observation()
         return state
+
+    def action_space(self):
+        return 2
+
+    def action_type(self):
+        return 'continuous'
+
+    def observation_space(self):
+        return self.env.get_observation().shape()
