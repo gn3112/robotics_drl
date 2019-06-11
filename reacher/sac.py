@@ -192,6 +192,9 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             logz.log_tabular('Alpha loss',alpha_loss.detach().numpy())
             logz.log_tabular('Log Pi',log_pi.mean().detach().numpy())
             logz.dump_tabular()
+
+            logz.save_pytorch_model(actor.state_dict())
+
             pbar.set_description('Step: %i | Reward: %f' % (step, return_ep.mean()))
 
             actor.train()
