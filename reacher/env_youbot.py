@@ -12,6 +12,11 @@ class environment(object):
         self.pr.launch(SCENE_FILE,headless=True)
         self.pr.start()
 
+
+        for i in ['l','r']:
+            self.wheel = self.pr.get_object('wheel_respondable_r%s'%i)
+            self.slipping = self.pr.get_object('slippingJoint_r%s'%i)
+
         self.target = self.pr.get_object('target')
         self.base_ref = self.pr.get_dummy('youBot_ref')
         self.youBot = self.pr.get_object('youBot')
@@ -22,7 +27,7 @@ class environment(object):
         for joint in joint_name:
             print(joint)
             self.wheel_joint_handle.append(self.pr.get_joint(joint))
-            
+
         self.rpa = rpa
         self.done = False
         self.obs_lowdim = obs_lowdim
@@ -34,6 +39,17 @@ class environment(object):
         self.xy_vel = [0,0]
 
         self.move_base() #Set velocity to 0
+        self.reset_wheel()
+
+
+    def reset_wheel(self):
+        p = [[-pi/4,0,0],[pi/4,0,pi]]
+        for i in range(2):
+            self.wheel[i].reset_dynamic_object()
+            self.slipping[i].set_position([0,0,0],relative_to=self.wheel_joint_handle[i+1])
+            self.slipping[i].set_position(p[i],relative_to=self.wheel_joint_handle[i+1])
+            self.wheel[i].set_orientation([0,0,0],relative_to=self.wheel_joint_handle[i+1])
+            self.wheel[i].set_orientation(0,0,0],relative_to=self.wheel_joint_handle[i+1])
 
     def move_base(self,forwBackVel=0,leftRightVel=0,rotVel=0):
         self.wheel_joint_handle[0].set_joint_target_velocity(-forwBackVel-leftRightVel-rotVel)
