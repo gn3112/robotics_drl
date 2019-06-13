@@ -29,12 +29,12 @@ class evaluation_sac(object):
         return (qvalues/len(self.states_eval)).item()
 
     def sample_episode(self,actor,save_video=True,n_episodes=5):
-        img_ep = []
         steps_all = []
         return_all = []
         with torch.no_grad():
             for ep in range(n_episodes):
                 state, done, total_reward, steps_ep = self.env.reset(), False, 0, 0
+                img_ep = []
                 while True:
                     action = actor(torch.tensor(state,dtype=torch.float64)).mean
                     steps_ep += 1
@@ -46,7 +46,7 @@ class evaluation_sac(object):
                         steps_all.append(steps_ep)
                         return_all.append(total_reward/steps_ep)
                         break
-                        
+
         return np.array(return_all), np.array(steps_all)
 
     def save_ep_video(self,imgs):
