@@ -39,11 +39,12 @@ class TanhNormal(Distribution):
 
 
 class SoftActor(nn.Module):
-  def __init__(self, hidden_size, action_space, obs_space, continuous=False):
+  def __init__(self, hidden_size, action_space, obs_space, std, continuous=False):
     super().__init__()
     self.action_space = action_space
     self.obs_space = obs_space
     self.continuous = continuous
+    self.std = std
     #self.log_std_min, self.log_std_max = -0.2, 0.2  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
     layers = [nn.Linear(self.obs_space, hidden_size), nn.ReLU(), nn.Linear(hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, action_space if self.continuous else 8)] # nn.Softmax(dim=0))
     self.policy = nn.Sequential(*layers)
@@ -54,7 +55,7 @@ class SoftActor(nn.Module):
         policy_mean = output_policy[:,0:self.action_space]
         #policy_log_std = output_policy[:,-1]
         #policy_log_std = torch.clamp(policy_log_std, min=self.log_std_min, max=self.log_std_max).view(-1,1,1)
-        policy = TanhNormal(policy_mean,(torch.tensor([0.2 for _ in range(self.action_space)], dtype=torch.float64)).view(-1,self.action_space))
+        policy = TanhNormal(policy_mean,self.std)
     else:
         policy = self.policy(state)
     return policy

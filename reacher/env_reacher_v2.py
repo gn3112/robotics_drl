@@ -192,3 +192,6 @@ class environment(object):
 
     def observation_space(self):
         return self.get_observation().shape
+
+    def step_limit(self):
+        return 60

@@ -11,7 +11,7 @@ import time
 import os
 import numpy as np
 from drl_evaluation import evaluation_sac
-device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # SAC implementation from spinning-up-basic
 
@@ -26,7 +26,7 @@ def setup_logger(logdir,locals_):
 def optimise(args):
     return None
 
-def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_STEPS,POLYAK_FACTOR, REPLAY_SIZE, TEST_INTERVAL, UPDATE_INTERVAL, UPDATE_START, ENV, OBSERVATION_LOW, logdir):
+def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_STEPS, POLYAK_FACTOR, REPLAY_SIZE, TEST_INTERVAL, UPDATE_INTERVAL, UPDATE_START, ENV, OBSERVATION_LOW, logdir):
     setup_logger(logdir, locals())
     continuous = True
     ENV = __import__(ENV)
@@ -34,8 +34,9 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     time.sleep(0.1)
     action_space = env.action_space()
     obs_space = env.observation_space()[0]
+    step_limit = env.step_limit()
 
-    actor = SoftActor(HIDDEN_SIZE, action_space, obs_space, continuous=continuous).double().to(device)
+    actor = SoftActor(HIDDEN_SIZE, action_space, obs_space,torch.tensor([0.2 for _ in range(action_space)], dtype=torch.float64, device=device).view(-1,action_space), continuous=continuous).double().to(device)
     critic_1 = Critic(HIDDEN_SIZE, 1, obs_space, action_space=action_space, state_action= True if continuous else False).double().to(device)
     critic_2 = Critic(HIDDEN_SIZE, 1, obs_space, action_space=action_space, state_action= True if continuous else False).double().to(device)
     value_critic = Critic(HIDDEN_SIZE, 1, obs_space).double().to(device)
@@ -45,7 +46,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     value_critic_optimiser = optim.Adam(value_critic.parameters(), lr=LEARNING_RATE)
     D = deque(maxlen=REPLAY_SIZE)
 
-    eval = evaluation_sac(env,logdir)
+    eval_ = evaluation_sac(env,logdir,device)
 
     #Automatic entropy tuning init
     target_entropy = -np.prod(action_space).item()
@@ -79,12 +80,13 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             next_state, reward, done = env.step(action.squeeze(dim=0))#.long
             next_state = torch.tensor(next_state, dtype=torch.float64, device=device)
             # Store (s, a, r, s', d) in replay buffer D
+            # Store (s, a, r, s', d) in replay buffer D
             D.append({'state': state.unsqueeze(dim=0), 'action': action, 'reward': torch.tensor([reward],dtype=torch.float64,device=device), 'next_state': next_state.unsqueeze(dim=0), 'done': torch.tensor([done], dtype=torch.float64, device=device)})
             state = next_state
             # If s' is terminal, reset environment state
             steps += 1
 
-            if done or steps>60: #TODO: incorporate step limit in the environment
+            if done or steps>step_limit: #TODO: incorporate step limit in the environment
                 eval_c2 = True #TODO: multiprocess pyrep with a session for each testing and training
                 steps = 0
                 state = torch.tensor(env.reset(), dtype=torch.float64, device=device)
@@ -176,8 +178,8 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             actor.eval()
             critic_1.eval()
             critic_2.eval()
-            q_value_eval = eval.get_qvalue(critic_1,critic_2)
-            return_ep, steps_ep = eval.sample_episode(actor)
+            q_value_eval = eval_.get_qvalue(critic_1,critic_2)
+            return_ep, steps_ep = eval_.sample_episode(actor)
 
             logz.log_tabular('Step', step)
             logz.log_tabular('Validation return', return_ep.mean())
@@ -185,11 +187,11 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             logz.log_tabular('Validation return std',return_ep.std())
             logz.log_tabular('Validation steps std',steps_ep.std())
             logz.log_tabular('Q-value evaluation',q_value_eval)
-            logz.log_tabular('Q-network loss', q_loss.detach().numpy())
-            logz.log_tabular('Value-network loss', v_loss.detach().numpy())
-            logz.log_tabular('Policy-network loss', policy_loss.detach().numpy())
-            logz.log_tabular('Alpha loss',alpha_loss.detach().numpy())
-            logz.log_tabular('Log Pi',log_pi.mean().detach().numpy())
+            logz.log_tabular('Q-network loss', q_loss.detach().cpu().numpy())
+            logz.log_tabular('Value-network loss', v_loss.detach().cpu().numpy())
+            logz.log_tabular('Policy-network loss', policy_loss.detach().cpu().numpy())
+            logz.log_tabular('Alpha loss',alpha_loss.detach().cpu().numpy())
+            logz.log_tabular('Log Pi',log_pi.mean().detach().cpu().numpy())
             logz.dump_tabular()
 
             logz.save_pytorch_model(actor.state_dict())

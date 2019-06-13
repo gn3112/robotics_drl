@@ -3,11 +3,12 @@ import numpy as np
 from images_to_video import im_to_vid
 
 class evaluation_sac(object):
-    def __init__(self, env, expdir, n_states=20):
+    def __init__(self, env, expdir, device, n_states=20):
         self.states_eval = []
         self.env = env
         self.imtovid = im_to_vid(expdir)
         self.expdir = expdir
+        self.device = device
         self.ep = 0
         # self.resize = T.Compose([T.ToPILImage(),
         #                          T.Grayscale(num_output_channels=1),
@@ -22,8 +23,8 @@ class evaluation_sac(object):
         qvalues = 0
         for state_action in self.states_eval:
             with torch.no_grad():
-                state = torch.from_numpy(state_action[0:10]).view(1,-1)
-                action = torch.from_numpy(state_action[10:13]).view(1,-1)
+                state = torch.from_numpy(state_action[0:10]).double().to(self.device).view(1,-1)
+                action = torch.from_numpy(state_action[10:13]).double().to(self.device).view(1,-1)
                 qvalues += critic_1(state,action)[0] + critic_2(state,action)[0]/2
 
         return (qvalues/len(self.states_eval)).item()
@@ -36,7 +37,7 @@ class evaluation_sac(object):
                 state, done, total_reward, steps_ep = self.env.reset(), False, 0, 0
                 img_ep = []
                 while True:
-                    action = actor(torch.tensor(state,dtype=torch.float64)).mean
+                    action = actor(torch.tensor(state,dtype=torch.float64,device=self.device)).mean
                     steps_ep += 1
                     state, reward, done = self.env.step(action.detach().squeeze(dim=0))
                     total_reward += reward
