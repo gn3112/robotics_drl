@@ -33,7 +33,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     env = ENV.environment(obs_lowdim=OBSERVATION_LOW)
     time.sleep(0.1)
     action_space = env.action_space()
-    obs_space = env.observation_space()[0]
+    obs_space = env.observation_space()
     step_limit = env.step_limit()
 
     actor = SoftActor(HIDDEN_SIZE, action_space, obs_space,torch.tensor([0.2 for _ in range(action_space)], dtype=torch.float64, device=device).view(-1,action_space), continuous=continuous).double().to(device)
@@ -230,6 +230,8 @@ def main():
     if not(os.path.exists(logdir)):
         os.makedirs(logdir)
 
+    start_time = time.time()
+
     train(args.BATCH_SIZE,
           args.DISCOUNT,
           args.ENTROPY_WEIGHT,
@@ -245,5 +247,7 @@ def main():
           args.OBSERVATION_LOW,
           logdir)
 
+    print("Elapsed time: ", time.time() - start_time)
+    
 if __name__ == "__main__":
     main()

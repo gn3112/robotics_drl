@@ -49,19 +49,19 @@ class SoftActor(nn.Module):
     self.log_std_min, self.log_std_max = -0.2, 0.2  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
 
     if len(self.obs_space) > 1:
-        self.conv1 = nn.Conv2d(self.obs_space[0],16,3) # Check here for dim (frame staking)
-        self.conv2 = nn.Conv2d(self.obs_space[0],16,3)
+        self.conv1 = nn.Conv2d(self.obs_space[-1],16,3) # Check here for dim (frame staking)
+        self.conv2 = nn.Conv2d(self.obs_space[-1],16,3)
 
         def conv2d_size_out(size, kernel_size = 3, stride = 1):
             return (size - (kernel_size - 1) - 1) // stride + 1
 
-        conv_h = conv2d_size_out(conv2d_size_out(conv2d_size_out(self.obs_space[1])))
-        conv_w = conv2d_size_out(conv2d_size_out(conv2d_size_out(self.obs_space[1])))
+        conv_h = conv2d_size_out(conv2d_size_out(conv2d_size_out(self.obs_space[0])))
+        conv_w = conv2d_size_out(conv2d_size_out(conv2d_size_out(self.obs_space[0])))
 
         self.fc1 = nn.Linear(conv_h*conv_w*16,256)
         self.fc2 = nn.Linear(256,self.action_space*2)
     else:
-        layers = [nn.Linear(self.obs_space*frames, hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, self.action_space*2 if self.continuous else 8)] # nn.Softmax(dim=0))
+        layers = [nn.Linear(self.obs_space[0], hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, self.action_space*2 if self.continuous else 8)] # nn.Softmax(dim=0))
         self.policy = nn.Sequential(*layers)
 
   def forward(self, state):
@@ -90,37 +90,39 @@ class Critic(nn.Module):
     self.obs_space = obs_space
 
     if len(self.obs_space) > 1:
-        self.conv1 = nn.Conv2d(self.obs_space[0],16,3) # Check here for dim (frame staking)
-        self.conv2 = nn.Conv2d(self.obs_space[0],16,3)
+        self.conv1 = nn.Conv2d(self.obs_space[-1],16,3) # Check here for dim (frame staking)
+        self.conv2 = nn.Conv2d(self.obs_space[-1],16,3)
 
         def conv2d_size_out(size, kernel_size = 3, stride = 1):
             return (size - (kernel_size - 1) - 1) // stride + 1
 
-        conv_h = conv2d_size_out(conv2d_size_out(conv2d_size_out(self.obs_space[1])))
-        conv_w = conv2d_size_out(conv2d_size_out(conv2d_size_out(self.obs_space[1])))
+        conv_h = conv2d_size_out(conv2d_size_out(conv2d_size_out(self.obs_space[0])))
+        conv_w = conv2d_size_out(conv2d_size_out(conv2d_size_out(self.obs_space[0])))
 
         self.fc1 = nn.Linear(conv_h*conv_w*16 + self.action_space if state_action else 0, 256)
         self.fc2 = nn.Linear(256,output_size)
     else:
-        layers = [nn.Linear(self.obs_space + (self.action_space if state_action else 0), hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, output_size)]
+        layers = [nn.Linear(self.obs_space[0] + (self.action_space if state_action else 0), hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, output_size)]
         if layer_norm:
           layers = layers[:1] + [nn.LayerNorm(hidden_size)] + layers[1:3] + [nn.LayerNorm(hidden_size)] + layers[3:]  # Insert layer normalisation between fully-connected layers and nonlinearities
         self.value = nn.Sequential(*layers)
 
   def forward(self, state, action=None):
-      if len(self.obs_space) > 1:
-          x = F.tanh((self.conv1(x)))
-          x = F.tanh((self.conv2(x)))
-          if self.state_action:
-            x = F.tanh(self.fc1(torch.cat([x.view(x.size(0),-1), action], dim=1)))
-          else:
-            x = F.tanh(self.fc1(x))
-          value = F.tanh(self.fc2(x))
-      else:
+    if len(self.obs_space) > 1:
+        x = F.tanh((self.conv1(x)))
+        x = F.tanh((self.conv2(x)))
         if self.state_action:
-          value = self.value(torch.cat([state, action], dim=1))
+            x = F.tanh(self.fc1(torch.cat([x.view(x.size(0),-1), action], dim=1)))
         else:
-          value = self.value(state)
+            x = F.tanh(self.fc1(x))
+
+        value = F.tanh(self.fc2(x))
+        
+    else:
+        if self.state_action:
+            value = self.value(torch.cat([state, action], dim=1))
+        else:
+            value = self.value(state)
 
     return value.squeeze(dim=1)
 
