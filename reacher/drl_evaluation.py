@@ -17,19 +17,20 @@ class evaluation_sac(object):
         for _ in range(n_states):
             state = self.env.reset()
             action = self.env.sample_action()
-            self.states_eval.append(np.concatenate((state,action)))
+            self.states_eval.append(state)
+            self.states_eval.append(action)
 
     def get_qvalue(self,critic_1,critic_2):
         qvalues = 0
         for state_action in self.states_eval:
             with torch.no_grad():
-                state = torch.from_numpy(state_action[0:10]).double().to(self.device).view(1,-1)
-                action = torch.from_numpy(state_action[10:13]).double().to(self.device).view(1,-1)
-                qvalues += critic_1(state,action)[0] + critic_2(state,action)[0]/2
+                state = torch.from_numpy(state_action[0]).double().to(self.device)
+                action = torch.from_numpy(state_action[1]).double().to(self.device)
+                qvalues += (critic_1(state,action)[0] + critic_2(state,action)[0])/2
 
         return (qvalues/len(self.states_eval)).item()
 
-    def sample_episode(self,actor,save_video=True,n_episodes=5):
+    def sample_episode(self, actor, resize, save_video=True, n_episodes=5):
         steps_all = []
         return_all = []
         with torch.no_grad():
@@ -37,7 +38,7 @@ class evaluation_sac(object):
                 state, done, total_reward, steps_ep = self.env.reset(), False, 0, 0
                 img_ep = []
                 while True:
-                    action = actor(torch.tensor(state,dtype=torch.float64,device=self.device)).mean
+                    action = actor(resize(torch.tensor(state,dtype=torch.float64,device=self.device))).mean
                     steps_ep += 1
                     state, reward, done = self.env.step(action.detach().squeeze(dim=0))
                     total_reward += reward
