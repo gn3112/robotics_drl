@@ -83,7 +83,7 @@ class environment(object):
         youbot_pos = self.base_ref.get_position()
         dist_ee_target = sqrt((youbot_pos[0] - target_pos[0])**2 + \
         (youbot_pos[1] - target_pos[1])**2)
-       
+
         if dist_ee_target < 0.3:
             reward = 1
             self.done = True
@@ -107,6 +107,7 @@ class environment(object):
             x_T,y_T = position
 
         self.target.set_position([x_T,y_T,0.0275])
+        self.done = False
 
     def reset_robot_position(self,random_=False, position=[0.5,0.5], orientation=0):
         if random_:
