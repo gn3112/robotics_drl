@@ -42,7 +42,7 @@ class evaluation_sac(object):
                     state, reward, done = self.env.step(action.detach().squeeze(dim=0))
                     total_reward += reward
                     img_ep.append(self.env.render())
-                    if steps_ep > 60 or done==True:
+                    if steps_ep > self.env.step_limit() or done==True:
                         if save_video==True: self.save_ep_video(img_ep)
                         steps_all.append(steps_ep)
                         return_all.append(total_reward/steps_ep)
