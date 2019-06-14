@@ -2,11 +2,12 @@ import copy
 import torch
 from torch import nn
 from torch.distributions import Distribution, Normal
+import torch.nn.functional as F
 
 class Actor(nn.Module):
   def __init__(self, hidden_size, stochastic=True, layer_norm=False):
     super().__init__()
-    layers = [nn.Linear(3, hidden_size), nn.ReLU(), nn.Linear(hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, 1)]
+    layers = [nn.Linear(3, hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, 1)]
     if layer_norm:
       layers = layers[:1] + [nn.LayerNorm(hidden_size)] + layers[1:3] + [nn.LayerNorm(hidden_size)] + layers[3:]  # Insert layer normalisation between fully-connected layers and nonlinearities
     self.policy = nn.Sequential(*layers)
@@ -45,39 +46,83 @@ class SoftActor(nn.Module):
     self.obs_space = obs_space
     self.continuous = continuous
     self.std = std
-    #self.log_std_min, self.log_std_max = -0.2, 0.2  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
-    layers = [nn.Linear(self.obs_space, hidden_size), nn.ReLU(), nn.Linear(hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, action_space if self.continuous else 8)] # nn.Softmax(dim=0))
-    self.policy = nn.Sequential(*layers)
+    self.log_std_min, self.log_std_max = -0.2, 0.2  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
 
-  def forward(self, state): # TODO: incorporate std in the network ouput by adding a parallel layer
+    if len(self.obs_space) > 1:
+        self.conv1 = nn.Conv2d(self.obs_space[0],16,3) # Check here for dim (frame staking)
+        self.conv2 = nn.Conv2d(self.obs_space[0],16,3)
+
+        def conv2d_size_out(size, kernel_size = 3, stride = 1):
+            return (size - (kernel_size - 1) - 1) // stride + 1
+
+        conv_h = conv2d_size_out(conv2d_size_out(conv2d_size_out(self.obs_space[1])))
+        conv_w = conv2d_size_out(conv2d_size_out(conv2d_size_out(self.obs_space[1])))
+
+        self.fc1 = nn.Linear(conv_h*conv_w*16,256)
+        self.fc2 = nn.Linear(256,self.action_space*2)
+    else:
+        layers = [nn.Linear(self.obs_space*frames, hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, self.action_space*2 if self.continuous else 8)] # nn.Softmax(dim=0))
+        self.policy = nn.Sequential(*layers)
+
+  def forward(self, state):
+    if len(self.obs_space) > 1:
+        x = F.tanh((self.conv1(x)))
+        x = F.tanh((self.conv2(x)))
+        x = F.tanh(self.fc1(x.view(x.size(0),-1)))
+        x = F.tanh(self.fc2(x))
+        policy_mean, policy_log_std = x.view(-1,self.action_space*2).chunk(2,dim=1)
+    else:
+        policy_mean, policy_log_std = self.policy(state).view(-1,self.action_space*2).chunk(2,dim=1)
+
     if self.continuous:
-        output_policy = self.policy(state).view(-1,self.action_space)
-        policy_mean = output_policy[:,0:self.action_space]
-        #policy_log_std = output_policy[:,-1]
-        #policy_log_std = torch.clamp(policy_log_std, min=self.log_std_min, max=self.log_std_max).view(-1,1,1)
-        policy = TanhNormal(policy_mean,self.std)
+        policy_log_std = torch.clamp(policy_log_std, min=self.log_std_min, max=self.log_std_max)
+        policy = TanhNormal(policy_mean, policy_log_std)
     else:
         policy = self.policy(state)
+
     return policy
 
-
 class Critic(nn.Module):
-  def __init__(self, hidden_size, output_size, obs_space, action_space=0, state_action=False, layer_norm=False):
+  def __init__(self, hidden_size, output_size, obs_space, action_space, state_action=False, layer_norm=False):
     super().__init__()
     self.state_action = state_action
+    self.action_space = action_space
     self.obs_space = obs_space
-    layers = [nn.Linear(self.obs_space + (action_space if state_action else 0), hidden_size), nn.ReLU(), nn.Linear(hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, output_size)]
-    if layer_norm:
-      layers = layers[:1] + [nn.LayerNorm(hidden_size)] + layers[1:3] + [nn.LayerNorm(hidden_size)] + layers[3:]  # Insert layer normalisation between fully-connected layers and nonlinearities
-    self.value = nn.Sequential(*layers)
+
+    if len(self.obs_space) > 1:
+        self.conv1 = nn.Conv2d(self.obs_space[0],16,3) # Check here for dim (frame staking)
+        self.conv2 = nn.Conv2d(self.obs_space[0],16,3)
+
+        def conv2d_size_out(size, kernel_size = 3, stride = 1):
+            return (size - (kernel_size - 1) - 1) // stride + 1
+
+        conv_h = conv2d_size_out(conv2d_size_out(conv2d_size_out(self.obs_space[1])))
+        conv_w = conv2d_size_out(conv2d_size_out(conv2d_size_out(self.obs_space[1])))
+
+        self.fc1 = nn.Linear(conv_h*conv_w*16 + self.action_space if state_action else 0, 256)
+        self.fc2 = nn.Linear(256,output_size)
+    else:
+        layers = [nn.Linear(self.obs_space + (self.action_space if state_action else 0), hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, output_size)]
+        if layer_norm:
+          layers = layers[:1] + [nn.LayerNorm(hidden_size)] + layers[1:3] + [nn.LayerNorm(hidden_size)] + layers[3:]  # Insert layer normalisation between fully-connected layers and nonlinearities
+        self.value = nn.Sequential(*layers)
 
   def forward(self, state, action=None):
-    if self.state_action:
-      value = self.value(torch.cat([state, action], dim=1))
-    else:
-      value = self.value(state)
-    return value.squeeze(dim=1)
+      if len(self.obs_space) > 1:
+          x = F.tanh((self.conv1(x)))
+          x = F.tanh((self.conv2(x)))
+          if self.state_action:
+            x = F.tanh(self.fc1(torch.cat([x.view(x.size(0),-1), action], dim=1)))
+          else:
+            x = F.tanh(self.fc1(x))
+          value = F.tanh(self.fc2(x))
+      else:
+        if self.state_action:
+          value = self.value(torch.cat([state, action], dim=1))
+        else:
+          value = self.value(state)
 
+    return value.squeeze(dim=1)
 
 class ActorCritic(nn.Module):
   def __init__(self, hidden_size):
@@ -89,7 +134,6 @@ class ActorCritic(nn.Module):
     policy = Normal(self.actor(state), self.actor.policy_log_std.exp())
     value = self.critic(state)
     return policy, value
-
 
 class DQN_FC(nn.Module):
 

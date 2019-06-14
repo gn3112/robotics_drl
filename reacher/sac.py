@@ -37,9 +37,9 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     step_limit = env.step_limit()
 
     actor = SoftActor(HIDDEN_SIZE, action_space, obs_space,torch.tensor([0.2 for _ in range(action_space)], dtype=torch.float64, device=device).view(-1,action_space), continuous=continuous).double().to(device)
-    critic_1 = Critic(HIDDEN_SIZE, 1, obs_space, action_space=action_space, state_action= True if continuous else False).double().to(device)
-    critic_2 = Critic(HIDDEN_SIZE, 1, obs_space, action_space=action_space, state_action= True if continuous else False).double().to(device)
-    value_critic = Critic(HIDDEN_SIZE, 1, obs_space).double().to(device)
+    critic_1 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True if continuous else False).double().to(device)
+    critic_2 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True if continuous else False).double().to(device)
+    value_critic = Critic(HIDDEN_SIZE, 1, obs_space, action_space).double().to(device)
     target_value_critic = create_target_network(value_critic).double().to(device)
     actor_optimiser = optim.Adam(actor.parameters(), lr=LEARNING_RATE)
     critics_optimiser = optim.Adam(list(critic_1.parameters()) + list(critic_2.parameters()), lr=LEARNING_RATE)
