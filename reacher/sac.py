@@ -13,6 +13,8 @@ import time
 import os
 import numpy as np
 from drl_evaluation import evaluation_sac
+import matplotlib
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # SAC implementation from spinning-up-basic
@@ -40,7 +42,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     if OBSERVATION_LOW:
         def resize(a):
             return torch.tensor(a)
-    else: 
+    else:
         def resize(a):
             resize = T.Compose([T.ToPILImage(),
                                 T.Grayscale(num_output_channels=1),
@@ -82,6 +84,8 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
               # Observe state s and select action a ~ μ(a|s)
               # action = actor(state).sample()
               if continuous:
+                  os.chdir("home/georges18/robotics_drl/reacher/")
+                  matplotlib.image.imsave('test_visual.png', state.detach().numpy())
                   action = actor(state).sample().double().to(device)
               else:
                   action_dstr = actor(state.to(device))
@@ -193,7 +197,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             q_value_eval = eval_.get_qvalue(critic_1,critic_2)
             return_ep, steps_ep = eval_.sample_episode(actor)
 
-            logz.log_tabular('Step', step)
+            logz.log_tabular('Training steps', step)
             logz.log_tabular('Validation return', return_ep.mean())
             logz.log_tabular('Validation steps',steps_ep.mean())
             logz.log_tabular('Validation return std',return_ep.std())
@@ -260,6 +264,6 @@ def main():
           logdir)
 
     print("Elapsed time: ", time.time() - start_time)
-    
+
 if __name__ == "__main__":
     main()
