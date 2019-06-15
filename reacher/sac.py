@@ -2,6 +2,8 @@ from collections import deque
 import random
 import torch
 from torch import optim
+from torchvision import transforms as T
+from PIL import Image
 from tqdm import tqdm
 from env_reacher_v2 import environment
 from models import Critic, SoftActor, create_target_network, update_target_network
@@ -35,6 +37,16 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     action_space = env.action_space()
     obs_space = env.observation_space()
     step_limit = env.step_limit()
+    if OBSERVATION_LOW:
+        def resize(a):
+            return torch.tensor(a)
+    else: 
+        def resize(a):
+            resize = T.Compose([T.ToPILImage(),
+                                T.Grayscale(num_output_channels=1),
+                                T.Resize(obs_space[0], interpolation=Image.BILINEAR),
+                                T.ToTensor()])
+            return resize(np.uint8(a))
 
     actor = SoftActor(HIDDEN_SIZE, action_space, obs_space,torch.tensor([0.2 for _ in range(action_space)], dtype=torch.float64, device=device).view(-1,action_space), continuous=continuous).double().to(device)
     critic_1 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True if continuous else False).double().to(device)
@@ -46,7 +58,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     value_critic_optimiser = optim.Adam(value_critic.parameters(), lr=LEARNING_RATE)
     D = deque(maxlen=REPLAY_SIZE)
 
-    eval_ = evaluation_sac(env,logdir,device)
+    eval_ = evaluation_sac(env,logdir,device,resize)
 
     #Automatic entropy tuning init
     target_entropy = -np.prod(action_space).item()
@@ -54,7 +66,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     alpha_optimizer = optim.Adam([log_alpha], lr=LEARNING_RATE)
 
     state, done = env.reset(), False
-    state = torch.tensor(state,dtype=torch.float64, device=device)
+    state = resize(state).double().to(device)
     pbar = tqdm(range(1, MAX_STEPS + 1), unit_scale=1, smoothing=0)
 
     steps = 0
@@ -78,10 +90,10 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
             # Execute a in the environment and observe next state s', reward r, and done signal d to indicate whether s' is terminal
             next_state, reward, done = env.step(action.squeeze(dim=0))#.long
-            next_state = torch.tensor(next_state, dtype=torch.float64, device=device)
+            next_state = resize(next_state).double().to(device)
             # Store (s, a, r, s', d) in replay buffer D
             # Store (s, a, r, s', d) in replay buffer D
-            D.append({'state': state.unsqueeze(dim=0), 'action': action, 'reward': torch.tensor([reward],dtype=torch.float64,device=device), 'next_state': next_state.unsqueeze(dim=0), 'done': torch.tensor([done], dtype=torch.float64, device=device)})
+            D.append({'state': state.unsqueeze(dim=0), 'action': action, 'reward': torch.tensor([reward],dtype=torch.float64,device=device), 'next_state': next_state.unsqueeze(dim=0), 'done': torch.tensor([True if reward == 1 else False], dtype=torch.float64, device=device)})
             state = next_state
             # If s' is terminal, reset environment state
             steps += 1
@@ -89,7 +101,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             if done or steps>step_limit: #TODO: incorporate step limit in the environment
                 eval_c2 = True #TODO: multiprocess pyrep with a session for each testing and training
                 steps = 0
-                state = torch.tensor(env.reset(), dtype=torch.float64, device=device)
+                state = resize(env.reset()).double().to(device)
 
         if step > UPDATE_START and step % UPDATE_INTERVAL == 0:
             # Randomly sample a batch of transitions B = {(s, a, r, s', d)} from D
