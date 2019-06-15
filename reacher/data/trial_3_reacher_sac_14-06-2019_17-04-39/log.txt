@@ -1,4 +1,0 @@
-Step	Validation return	Validation steps	Validation return std	Validation steps std	Q-value evaluation	Q-network loss	Value-network loss	Policy-network loss	Alpha loss	Log Pi
-11000	nan	60.0	nan	0.0	nan	nan	nan	nan	nan	nan
-12000	nan	60.0	nan	0.0	nan	nan	nan	nan	nan	nan
-13000	nan	60.0	nan	0.0	nan	nan	nan	nan	nan	nan
