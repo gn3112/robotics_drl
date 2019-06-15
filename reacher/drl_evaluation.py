@@ -3,34 +3,38 @@ import numpy as np
 from images_to_video import im_to_vid
 
 class evaluation_sac(object):
-    def __init__(self, env, expdir, device, n_states=20):
+    def __init__(self, env, expdir, device, resize, n_states=20):
         self.states_eval = []
         self.env = env
         self.imtovid = im_to_vid(expdir)
         self.expdir = expdir
         self.device = device
+        if len(self.env.observation_space()) > 1:
+            self.resize = resize
+        else:
+            def resize(a):
+                return torch.tensor(a)
+
+            self.resize = resize
+        
         self.ep = 0
-        # self.resize = T.Compose([T.ToPILImage(),
-        #                          T.Grayscale(num_output_channels=1),
-        #                          T.Resize(64, interpolation=Image.BILINEAR),
-        #                          T.ToTensor()])
+        
         for _ in range(n_states):
             state = self.env.reset()
             action = self.env.sample_action()
-            self.states_eval.append(state)
-            self.states_eval.append(action)
+            self.states_eval.append([state,action])
 
     def get_qvalue(self,critic_1,critic_2):
         qvalues = 0
         for state_action in self.states_eval:
             with torch.no_grad():
-                state = torch.from_numpy(state_action[0]).double().to(self.device)
-                action = torch.from_numpy(state_action[1]).double().to(self.device)
+                state = self.resize(state_action[0]).double().to(self.device)
+                action = torch.tensor(state_action[1]).double().to(self.device).view(-1,self.env.action_space())
                 qvalues += (critic_1(state,action)[0] + critic_2(state,action)[0])/2
 
         return (qvalues/len(self.states_eval)).item()
 
-    def sample_episode(self, actor, resize, save_video=True, n_episodes=5):
+    def sample_episode(self, actor, save_video=True, n_episodes=5):
         steps_all = []
         return_all = []
         with torch.no_grad():
@@ -38,12 +42,12 @@ class evaluation_sac(object):
                 state, done, total_reward, steps_ep = self.env.reset(), False, 0, 0
                 img_ep = []
                 while True:
-                    action = actor(resize(torch.tensor(state,dtype=torch.float64,device=self.device))).mean
+                    action = actor(self.resize(state).double().to(self.device)).mean
                     steps_ep += 1
                     state, reward, done = self.env.step(action.detach().squeeze(dim=0))
                     total_reward += reward
                     img_ep.append(self.env.render())
-                    if steps_ep > self.env.step_limit() or done==True:
+                    if steps_ep > self.env.step_limit() - 1 or done==True:
                         if save_video==True: self.save_ep_video(img_ep)
                         steps_all.append(steps_ep)
                         return_all.append(total_reward/steps_ep)
