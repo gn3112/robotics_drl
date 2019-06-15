@@ -7,7 +7,7 @@ import torch
 import time
 
 class environment(object):
-    def __init__(self, obs_lowdim=True, rpa=4):
+    def __init__(self, obs_lowdim=True, rpa=6):
         self.pr = PyRep()
         SCENE_FILE = join(dirname(abspath(__file__)), 'youbot.ttt')
         self.pr.launch(SCENE_FILE,headless=True)
@@ -83,10 +83,16 @@ class environment(object):
         youbot_pos = self.base_ref.get_position()
         dist_ee_target = sqrt((youbot_pos[0] - target_pos[0])**2 + \
         (youbot_pos[1] - target_pos[1])**2)
-
+        
+        pos_ref = self.base_ref.get_position()
+        dist_from_origin = sqrt(pos_ref[0]**2 + pos_ref[1]**2) 
+        
         if dist_ee_target < 0.3:
             reward = 1
             self.done = True
+        elif dist_from_origin > 2.4: 
+            self.done = True
+            reward = -dist_ee_target/3
         else:
             reward = -dist_ee_target/3
 
@@ -162,4 +168,4 @@ class environment(object):
         return [[-240,240],[-240,240],[-240,240]]
 
     def step_limit(self):
-        return 120
+        return 160
