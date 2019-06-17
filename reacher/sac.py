@@ -43,11 +43,11 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             return torch.tensor(a)
     else:
         def resize(a):
-            resize = T.Compose([T.ToPILImage(),
-                                T.Grayscale(num_output_channels=1),
-                                T.Resize(obs_space[0], interpolation=Image.BILINEAR),
-                                T.ToTensor()])
-            return resize(np.uint8(a))
+            # resize = T.Compose([T.ToPILImage(),
+            #                     T.Grayscale(num_output_channels=1),
+            #                     T.Resize(obs_space[0], interpolation=Image.BILINEAR),
+            #                     T.ToTensor()])
+            return a
 
     actor = SoftActor(HIDDEN_SIZE, action_space, obs_space,torch.tensor([0.2 for _ in range(action_space)], dtype=torch.float64, device=device).view(-1,action_space)).double().to(device)
     critic_1 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True).double().to(device)
@@ -144,9 +144,9 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 next_actions = next_policy.rsample()
                 next_log_prob = next_policy.log_prob(next_actions)
                 target_qs = torch.min(target_critic_1(next_observations, new_next_actions), target_critic_2(next_observations, new_next_actions)) - alpha * new_next_log_prob
-                y_q = batch['reward' + DISCOUNT * (1 - batch['done']) * target_qs.detach()
+                y_q = batch['reward'] + DISCOUNT * (1 - batch['done']) * target_qs.detach()
 
-            q_loss = (critic_1(batch['state'], batch['action']) - y_q).pow(2).mean() + (critic_2(batch['state'], batch['action']) - y_q).pow(2).mean().to(device)
+            q_loss = (critic_1(batch['state'], batch['action']) - y_q).pow(2).mean() + (critic_2(batch['state'], batch['action']) - y_q).pow(2).mean()
 
             critics_optimiser.zero_grad()
             q_loss.backward()
