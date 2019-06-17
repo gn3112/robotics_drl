@@ -84,8 +84,6 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
               # Observe state s and select action a ~ μ(a|s)
               # action = actor(state).sample()
               if continuous:
-                  os.chdir("home/georges18/robotics_drl/reacher/")
-                  matplotlib.image.imsave('test_visual.png', state.detach().numpy())
                   action = actor(state).sample().double().to(device)
               else:
                   action_dstr = actor(state.to(device))
