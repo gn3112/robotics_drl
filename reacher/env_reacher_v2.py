@@ -7,9 +7,18 @@ import random
 import torch
 from os.path import dirname, join, abspath
 import numpy as np
+from torchvision import transforms as T
+from PIL import Image
+
+def resize()
+    resize = T.Compose([T.ToPILImage(),
+                        T.Grayscale(num_output_channels=1),
+                        T.Resize(obs_space[0], interpolation=Image.BILINEAR),
+                        T.ToTensor()])
+    return resize(np.uint8(a))
 
 class environment(object):
-    def __init__(self,continuous_control=True, obs_lowdim=True, rpa=1):
+    def __init__(self,continuous_control=True, obs_lowdim=True, rpa=1, frames=4):
         self.pr = PyRep()
         SCENE_FILE = join(dirname(abspath(__file__)), 'reacher_v2.ttt')
         self.pr.launch(SCENE_FILE,headless=True)
@@ -24,6 +33,8 @@ class environment(object):
         self.done = False
         self.rpa = rpa
         self.obs_lowdim = obs_lowdim
+        self.frames = frames
+        self.prev_obs = []
         self.increment = 4*pi/180 # to radians
         self.action_all = [[self.increment,self.increment],
                       [-self.increment,-self.increment],
@@ -72,9 +83,19 @@ class environment(object):
 
             return np.concatenate((cos_joints, sin_joints, joints_pos, joints_vel, tip_target_vec[0:2]),axis=0)
         else:
-            return self.render()
+            new_obs = resize(self.render())
+            if self.steps_ep == 0:
+                obs = new_obs.repeat(1,1,self.frames)
+            else:
+                for i in range(self.frames-1):
+                    self.prev_obs[:,:,i] = self.prev_obs[:,:,i+1]
+                self.prev_obs[:,:,-1] = new_obs
+
+            self.prev_obs = obs
+            return obs
 
     def step(self,action):
+        self.steps_ep += 1
         #TODO: change directly from pos to vel without changing in scene
         for action_rep in range(self.rpa):
             if self.continuous_control == True:
@@ -98,6 +119,10 @@ class environment(object):
             reward = -tip_target_dist
 
         state = self.get_observation()
+        # Memory (4 previous frames)
+        if self.obs_lowdim == False and self.done == False:
+            prev_states =
+            state = np.
         return state, reward, self.done
 
 
@@ -179,6 +204,7 @@ class environment(object):
         self.pr.shutdown()
 
     def reset(self):
+        self.steps_ep = 0
         self.reset_target_position(random_=True)
         self.reset_robot_position(random_=True)
         state = self.get_observation()
