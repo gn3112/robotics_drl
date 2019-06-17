@@ -1,5 +1,5 @@
 from pyrep import PyRep
-from math import pi, sqrt
+from math import pi, sqrt, abs
 import random
 import numpy as np
 from os.path import dirname, join, abspath
@@ -32,6 +32,7 @@ class environment(object):
         self.rpa = rpa
         self.done = False
         self.obs_lowdim = obs_lowdim
+        self.action = [0,0,0]
 
         ForwBackVel_range = [-240,240]
         LeftRightVel_range = [-240,240]
@@ -73,24 +74,25 @@ class environment(object):
             pos = self.base_ref.get_position()
 
             targ_vec = np.array(self.target.get_position()) - np.array(pos)
-            return np.concatenate(([or_[0]], pos[0:2], self.xy_vel, targ_vec[0:2]),axis=0)
+            return np.concatenate(([or_[0]], pos[0:2], self.xy_vel, self.action, targ_vec[0:2]),axis=0)
         else:
             return None # This camera is mounted on the robot arm not the top view camera
 
     def step(self,action):
+        self.action = action
         self.move_base(forwBackVel=action[0],leftRightVel=action[1],rotVel=action[2])
         target_pos = self.target.get_position()
         youbot_pos = self.base_ref.get_position()
         dist_ee_target = sqrt((youbot_pos[0] - target_pos[0])**2 + \
         (youbot_pos[1] - target_pos[1])**2)
-        
+
         pos_ref = self.base_ref.get_position()
-        dist_from_origin = sqrt(pos_ref[0]**2 + pos_ref[1]**2) 
-        
-        if dist_ee_target < 0.3:
+        dist_from_origin = sqrt(pos_ref[0]**2 + pos_ref[1]**2)
+
+        if dist_ee_target < 0.35:
             reward = 1
             self.done = True
-        elif dist_from_origin > 2.4: 
+        elif dist_from_origin > 2.4:
             self.done = True
             reward = -dist_ee_target/3
         else:
@@ -117,7 +119,10 @@ class environment(object):
 
     def reset_robot_position(self,random_=False, position=[0.5,0.5], orientation=0):
         if random_:
-            x_L, y_L = self.rand_bound() # Make sure target and robot are away from each other?
+            target_pos = self.target.get_position()
+            # Make sure target and robot are away from each other?
+            while abs(sqrt(x_L**2 + y_L**2) - sqrt(target_pos[0]**2 + target_pos[1]**2)) < 0.5:
+                x_L, y_L = self.rand_bound()
             orientation = random.random()*2*pi
         else:
             x_L, y_L = position
