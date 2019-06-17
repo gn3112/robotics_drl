@@ -40,11 +40,10 @@ class TanhNormal(Distribution):
 
 
 class SoftActor(nn.Module):
-  def __init__(self, hidden_size, action_space, obs_space, std, continuous=False):
+  def __init__(self, hidden_size, action_space, obs_space, std):
     super().__init__()
     self.action_space = action_space
     self.obs_space = obs_space
-    self.continuous = continuous
     self.std = std
     self.log_std_min, self.log_std_max = -0.2, 0.2  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
     if len(self.obs_space) > 1:
@@ -60,7 +59,7 @@ class SoftActor(nn.Module):
         self.fc1 = nn.Linear(conv_h*conv_w*32,256)
         self.fc2 = nn.Linear(256,self.action_space*2)
     else:
-        layers = [nn.Linear(self.obs_space[0], hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, self.action_space*2 if self.continuous else 8)] # nn.Softmax(dim=0))
+        layers = [nn.Linear(self.obs_space[0], hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, self.action_space*2)] # nn.Softmax(dim=0))
         self.policy = nn.Sequential(*layers)
 
   def forward(self, state):
@@ -73,11 +72,8 @@ class SoftActor(nn.Module):
     else:
         policy_mean, policy_log_std = self.policy(state).view(-1,self.action_space*2).chunk(2,dim=1)
 
-    if self.continuous:
-        policy_log_std = torch.clamp(policy_log_std, min=self.log_std_min, max=self.log_std_max)
-        policy = TanhNormal(policy_mean, policy_log_std.exp())
-    else:
-        policy = self.policy(state)
+    policy_log_std = torch.clamp(policy_log_std, min=self.log_std_min, max=self.log_std_max)
+    policy = TanhNormal(policy_mean, policy_log_std.exp())
 
     return policy
 
@@ -115,7 +111,7 @@ class Critic(nn.Module):
             x = F.tanh(self.fc1(x.view(x.size(0),-1)))
 
         value = F.tanh(self.fc2(x))
-        
+
     else:
         if self.state_action:
             value = self.value(torch.cat([state.view(-1,self.obs_space[0]), action.view(-1,self.action_space)], dim=1))

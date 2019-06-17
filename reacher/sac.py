@@ -30,9 +30,8 @@ def setup_logger(logdir,locals_):
 def optimise(args):
     return None
 
-def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_STEPS, POLYAK_FACTOR, REPLAY_SIZE, TEST_INTERVAL, UPDATE_INTERVAL, UPDATE_START, ENV, OBSERVATION_LOW, logdir):
+def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_STEPS, POLYAK_FACTOR, REPLAY_SIZE, TEST_INTERVAL, UPDATE_INTERVAL, UPDATE_START, ENV, OBSERVATION_LOW, VALUE_FNC, logdir):
     setup_logger(logdir, locals())
-    continuous = True
     ENV = __import__(ENV)
     env = ENV.environment(obs_lowdim=OBSERVATION_LOW)
     time.sleep(0.1)
@@ -50,14 +49,18 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                                 T.ToTensor()])
             return resize(np.uint8(a))
 
-    actor = SoftActor(HIDDEN_SIZE, action_space, obs_space,torch.tensor([0.2 for _ in range(action_space)], dtype=torch.float64, device=device).view(-1,action_space), continuous=continuous).double().to(device)
-    critic_1 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True if continuous else False).double().to(device)
-    critic_2 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True if continuous else False).double().to(device)
-    value_critic = Critic(HIDDEN_SIZE, 1, obs_space, action_space).double().to(device)
-    target_value_critic = create_target_network(value_critic).double().to(device)
+    actor = SoftActor(HIDDEN_SIZE, action_space, obs_space,torch.tensor([0.2 for _ in range(action_space)], dtype=torch.float64, device=device).view(-1,action_space)).double().to(device)
+    critic_1 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True).double().to(device)
+    critic_2 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True).double().to(device)
+    if VALUE_FNC:
+        value_critic = Critic(HIDDEN_SIZE, 1, obs_space, action_space).double().to(device)
+        target_value_critic = create_target_network(value_critic).double().to(device)
+        value_critic_optimiser = optim.Adam(value_critic.parameters(), lr=LEARNING_RATE)
+    else:
+        target_critic_1 = create_target_network(critic_2)
+        target_critic_2 = create_target_network(critic_2)
     actor_optimiser = optim.Adam(actor.parameters(), lr=LEARNING_RATE)
     critics_optimiser = optim.Adam(list(critic_1.parameters()) + list(critic_2.parameters()), lr=LEARNING_RATE)
-    value_critic_optimiser = optim.Adam(value_critic.parameters(), lr=LEARNING_RATE)
     D = deque(maxlen=REPLAY_SIZE)
 
     eval_ = evaluation_sac(env,logdir,device,resize)
@@ -76,19 +79,11 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
         with torch.no_grad():
             if step < UPDATE_START:
               # To improve exploration take actions sampled from a uniform random distribution over actions at the start of training
-              if continuous:
-                  action = torch.tensor(env.sample_action(), dtype=torch.float64, device=device).unsqueeze(dim=0)
-              else:
-                  action = torch.tensor(random.randrange(8),device=device).unsqueeze(dim=0)
+              action = torch.tensor(env.sample_action(), dtype=torch.float64, device=device).unsqueeze(dim=0)
             else:
               # Observe state s and select action a ~ μ(a|s)
               # action = actor(state).sample()
-              if continuous:
-                  action = actor(state).sample().double().to(device)
-              else:
-                  action_dstr = actor(state.to(device))
-                  _, action = torch.max(action_dstr,0)
-                  action = action.unsqueeze(dim=0).long()
+              action = actor(state).sample().double().to(device)
 
             # Execute a in the environment and observe next state s', reward r, and done signal d to indicate whether s' is terminal
             next_state, reward, done = env.step(action.squeeze(dim=0))#.long
@@ -127,61 +122,58 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                      'done':torch.cat(done_batch,dim=0)
                      }
 
-            #batch = {k: torch.cat([d[k] for d in batch], dim=0) for k in batch[0].keys()}
+            policy = actor(batch['state'])
+            action = policy.rsample()  # a(s) is a sample from μ(·|s) which is differentiable wrt θ via the reparameterisation trick
+
+            #Automatic entropy tuning
+            log_pi = policy.log_prob(action).sum(dim=1)
+            alpha_loss = -(log_alpha.double() * (log_pi + target_entropy).double().detach()).mean()
+            alpha_optimizer.zero_grad()
+            alpha_loss.backward()
+            alpha_optimizer.step()
+            alpha = log_alpha.exp()
+            weighted_sample_entropy = (alpha.double() * log_pi).view(-1,1)
+
             # Compute targets for Q and V functions
-
-            y_q = batch['reward'] + DISCOUNT * (1 - batch['done']) * target_value_critic(batch['next_state'])
-            if continuous:
-                policy = actor(batch['state'])
-                action = policy.rsample()  # a(s) is a sample from μ(·|s) which is differentiable wrt θ via the reparameterisation trick
-
-                #Automatic entropy tuning
-                log_pi = policy.log_prob(action).sum(dim=1)
-                alpha_loss = -(log_alpha.double() * (log_pi + target_entropy).double().detach()).mean()
-                alpha_optimizer.zero_grad()
-                alpha_loss.backward()
-                alpha_optimizer.step()
-                alpha = log_alpha.exp()
-                weighted_sample_entropy = (alpha.double() * log_pi).view(-1,1)
-
+            if VALUE_FNC:
+                y_q = batch['reward'] + DISCOUNT * (1 - batch['done']) * target_value_critic(batch['next_state'])
                 y_v = torch.min(critic_1(batch['state'], action.detach()), critic_2(batch['state'], action.detach())) - weighted_sample_entropy.detach()
-
-                q_loss = (critic_1(batch['state'], batch['action']) - y_q).pow(2).mean() + (critic_2(batch['state'], batch['action']) - y_q).pow(2).mean().to(device)
             else:
-                action_dstr = actor(batch['state'])
-                weighted_sample_entropy = ENTROPY_WEIGHT * torch.log(action_dstr)  # Note: in practice it is more numerically stable to calculate the log probability when sampling an action to avoid inverting tanh
-                a_idx = (batch['action']).view(-1,1).to(device)
-                y_v = torch.min(critic_1(batch['state']).gather(1,a_idx), critic_2(batch['state']).gather(1,a_idx)) - weighted_sample_entropy.detach().gather(1,a_idx)
+                # No value function network
+                next_policy = actor(batch['next_state'])
+                next_actions = next_policy.rsample()
+                next_log_prob = next_policy.log_prob(next_actions)
+                target_qs = torch.min(target_critic_1(next_observations, new_next_actions), target_critic_2(next_observations, new_next_actions)) - alpha * new_next_log_prob
+                y_q = batch['reward' + DISCOUNT * (1 - batch['done']) * target_qs.detach()
 
-                q_loss = ((critic_1(batch['state']).gather(1,a_idx) - y_q).pow(2).mean() + (critic_2(batch['state']).gather(1,a_idx) - y_q).pow(2).mean()).to(device)
-            # Update Q-functions by one step of gradient descent
+            q_loss = (critic_1(batch['state'], batch['action']) - y_q).pow(2).mean() + (critic_2(batch['state'], batch['action']) - y_q).pow(2).mean().to(device)
 
             critics_optimiser.zero_grad()
             q_loss.backward()
             critics_optimiser.step()
 
             # Update V-function by one step of gradient descent
-            if continuous:
+            if VALUE_FNC:
                 v_loss = (value_critic(batch['state']) - y_v).pow(2).mean().to(device)
-            else:
-                v_loss = ((value_critic(batch['state']) - y_v).pow(2).mean()).to(device)
 
-            value_critic_optimiser.zero_grad()
-            v_loss.backward()
-            value_critic_optimiser.step()
+                value_critic_optimiser.zero_grad()
+                v_loss.backward()
+                value_critic_optimiser.step()
 
             # Update policy by one step of gradient ascent
-            if continuous:
-                policy_loss = (weighted_sample_entropy - critic_1(batch['state'], action)).mean().to(device)
-            else:
-                policy_loss = ((weighted_sample_entropy - critic_1(batch['state'])).sum(dim=1).mean()).to(device)
+            new_qs = torch.min(critic_1(batch["state"], action),critic_2(batch["state"], action))
+            policy_loss = (weighted_sample_entropy - new_qs).mean().to(device)
 
             actor_optimiser.zero_grad()
             policy_loss.backward()
             actor_optimiser.step()
 
             # Update target value network
-            update_target_network(value_critic, target_value_critic, POLYAK_FACTOR)
+            if VALUE_FNC:
+                update_target_network(value_critic, target_value_critic, POLYAK_FACTOR)
+            else:
+                update_target_network(critic_1, target_critic_1, POLYAK_FACTOR)
+                update_target_network(critic_2, target_critic_2, POLYAK_FACTOR)
 
         if step > UPDATE_START and step % TEST_INTERVAL == 0: eval_c = True
         else: eval_c = False
@@ -202,7 +194,8 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             logz.log_tabular('Validation steps std',steps_ep.std())
             logz.log_tabular('Q-value evaluation',q_value_eval)
             logz.log_tabular('Q-network loss', q_loss.detach().cpu().numpy())
-            logz.log_tabular('Value-network loss', v_loss.detach().cpu().numpy())
+            if VALUE_FNC:
+                logz.log_tabular('Value-network loss', v_loss.detach().cpu().numpy())
             logz.log_tabular('Policy-network loss', policy_loss.detach().cpu().numpy())
             logz.log_tabular('Alpha loss',alpha_loss.detach().cpu().numpy())
             logz.log_tabular('Log Pi',log_pi.mean().detach().cpu().numpy())
@@ -235,6 +228,7 @@ def main():
     parser.add_argument('--TEST_INTERVAL',default=1000,type=int)
     parser.add_argument('--UPDATE_INTERVAL',default=1,type=int)
     parser.add_argument('--UPDATE_START',default=10000,type=int)
+    parser.add_argument('--VALUE_FNC',action='store_false')
 
     args = parser.parse_args()
     if not(os.path.exists('data')):
@@ -259,6 +253,7 @@ def main():
           args.UPDATE_START,
           args.ENV,
           args.OBSERVATION_LOW,
+          args.VALUE_FNC,
           logdir)
 
     print("Elapsed time: ", time.time() - start_time)
