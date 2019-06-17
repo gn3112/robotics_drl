@@ -16,6 +16,7 @@ from collections import deque
 from env_reacher_v2 import environment
 from images_to_video import im_to_vid
 from models import DQN_FC
+from cem import CEM
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -119,12 +120,13 @@ class evaluation(object):
             im.save(imdir,"JPEG")
         self.ep += 1
 
-def select_actions(state,eps_start,eps_end,eps_decay,steps_done,policy_net,env):
+def select_actions(cem,state,eps_start,eps_end,eps_decay,steps_done,policy_net,env):
     sample = random.random()
     eps_threshold = eps_end + (eps_start - eps_end) * math.exp(-1. * steps_done / eps_decay)
     if sample > eps_threshold:
         policy_net.eval()
-        return (policy_net((state.to(device))).argmax(1).view(1,-1)), eps_threshold
+        returm cem(belief, state, policy_net, )
+        #return (policy_net((state.to(device))).argmax(1).view(1,-1)), eps_threshold
     else:
         return torch.tensor([[random.randrange(len(env.action_all))]], dtype=torch.long), eps_threshold
 
@@ -176,7 +178,7 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
     setup_logger(logdir, locals())
 
     env = environment()
-
+    cem = CEM(env.action_space(), 5, 10, 20, 5)
     eval_policy = evaluation(env,logdir)
 
     env.reset_robot_position(random_=True)
@@ -217,8 +219,9 @@ def train(episodes, learning_rate, batch_size, gamma, eps_start, eps_end,
         sampling_time = 0
         start_time = time.time()
         while True:
-            action, eps_threshold = select_actions(obs, eps_start, eps_end,
+            action, eps_threshold = select_actions(cem, obs, eps_start, eps_end,
                                                        eps_decay, steps_train, policy_net,env)
+
 
             reward, done = env.step_(action)
             reward = torch.tensor(reward,dtype=torch.float).view(-1,1)
