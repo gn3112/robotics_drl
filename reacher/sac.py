@@ -43,11 +43,11 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             return torch.tensor(a)
     else:
         def resize(a):
-            # resize = T.Compose([T.ToPILImage(),
-            #                     T.Grayscale(num_output_channels=1),
-            #                     T.Resize(obs_space[0], interpolation=Image.BILINEAR),
-            #                     T.ToTensor()])
-            return a
+            resize = T.Compose([T.ToPILImage(),
+                                T.Grayscale(num_output_channels=1),
+                                T.Resize(obs_space[0], interpolation=Image.BILINEAR),
+                                T.ToTensor()])
+            return resize(np.uint8(a))
 
     actor = SoftActor(HIDDEN_SIZE, action_space, obs_space,torch.tensor([0.2 for _ in range(action_space)], dtype=torch.float64, device=device).view(-1,action_space)).double().to(device)
     critic_1 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True).double().to(device)

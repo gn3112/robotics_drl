@@ -10,7 +10,7 @@ import numpy as np
 from torchvision import transforms as T
 from PIL import Image
 
-def resize():
+def resize()
     resize = T.Compose([T.ToPILImage(),
                         T.Grayscale(num_output_channels=1),
                         T.Resize(obs_space[0], interpolation=Image.BILINEAR),
