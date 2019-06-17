@@ -144,9 +144,9 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 next_actions = next_policy.rsample()
                 next_log_prob = next_policy.log_prob(next_actions)
                 target_qs = torch.min(target_critic_1(next_observations, new_next_actions), target_critic_2(next_observations, new_next_actions)) - alpha * new_next_log_prob
-                y_q = batch['reward' + DISCOUNT * (1 - batch['done']) * target_qs.detach()
+                y_q = batch['reward'] + DISCOUNT * (1 - batch['done']) * target_qs.detach()
 
-            q_loss = (critic_1(batch['state'], batch['action']) - y_q).pow(2).mean() + (critic_2(batch['state'], batch['action']) - y_q).pow(2).mean().to(device)
+            q_loss = (critic_1(batch['state'], batch['action']) - y_q).pow(2).mean() + (critic_2(batch['state'], batch['action']) - y_q).pow(2).mean()
 
             critics_optimiser.zero_grad()
             q_loss.backward()
