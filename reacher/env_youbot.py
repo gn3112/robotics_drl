@@ -1,5 +1,5 @@
 from pyrep import PyRep
-from math import pi, sqrt, abs
+from math import pi, sqrt
 import random
 import numpy as np
 from os.path import dirname, join, abspath
@@ -121,6 +121,7 @@ class environment(object):
         if random_:
             target_pos = self.target.get_position()
             # Make sure target and robot are away from each other?
+            x_L, y_L = self.rand_bound()
             while abs(sqrt(x_L**2 + y_L**2) - sqrt(target_pos[0]**2 + target_pos[1]**2)) < 0.5:
                 x_L, y_L = self.rand_bound()
             orientation = random.random()*2*pi

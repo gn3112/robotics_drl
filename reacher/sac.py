@@ -86,7 +86,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
               action = actor(state).sample().double().to(device)
 
             # Execute a in the environment and observe next state s', reward r, and done signal d to indicate whether s' is terminal
-            next_state, reward, done = env.step(action.squeeze(dim=0))#.long
+            next_state, reward, done = env.step(action.squeeze(dim=0).cpu())#.long
             next_state = resize(next_state).double().to(device)
             # Store (s, a, r, s', d) in replay buffer D
             # Store (s, a, r, s', d) in replay buffer D

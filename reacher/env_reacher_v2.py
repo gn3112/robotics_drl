@@ -10,10 +10,10 @@ import numpy as np
 from torchvision import transforms as T
 from PIL import Image
 
-def resize()
+def resize(a):
     resize = T.Compose([T.ToPILImage(),
                         T.Grayscale(num_output_channels=1),
-                        T.Resize(obs_space[0], interpolation=Image.BILINEAR),
+                        T.Resize(64, interpolation=Image.BILINEAR),
                         T.ToTensor()])
     return resize(np.uint8(a))
 
@@ -35,6 +35,7 @@ class environment(object):
         self.obs_lowdim = obs_lowdim
         self.frames = frames
         self.prev_obs = []
+        self.steps_ep = 0
         self.increment = 4*pi/180 # to radians
         self.action_all = [[self.increment,self.increment],
                       [-self.increment,-self.increment],
@@ -83,16 +84,17 @@ class environment(object):
 
             return np.concatenate((cos_joints, sin_joints, joints_pos, joints_vel, tip_target_vec[0:2]),axis=0)
         else:
-            new_obs = resize(self.render())
+            new_obs = resize(self.render()).view(64,64,1)
             if self.steps_ep == 0:
                 obs = new_obs.repeat(1,1,self.frames)
             else:
                 for i in range(self.frames-1):
                     self.prev_obs[:,:,i] = self.prev_obs[:,:,i+1]
-                self.prev_obs[:,:,-1] = new_obs
+                self.prev_obs[:,:,3] = new_obs[:,:,0]
+                obs = self.prev_obs
 
             self.prev_obs = obs
-            return obs
+            return obs.view(-1,64,64)
 
     def step(self,action):
         self.steps_ep += 1
@@ -116,13 +118,10 @@ class environment(object):
             reward = 1
             self.done = True
         else:
-            reward = -tip_target_dist
+            reward = -exp(tip_target_dist)/6
 
         state = self.get_observation()
-        # Memory (4 previous frames)
-        if self.obs_lowdim == False and self.done == False:
-            prev_states =
-            state = np.
+
         return state, reward, self.done
 
 

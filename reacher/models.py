@@ -64,7 +64,7 @@ class SoftActor(nn.Module):
 
   def forward(self, state):
     if len(self.obs_space) > 1:
-        x = F.tanh((self.conv1(state.view(-1,1,64,64))))
+        x = F.tanh((self.conv1(state.view(-1,4,64,64))))
         x = F.tanh((self.conv2(x)))
         x = F.tanh(self.fc1(x.view(x.size(0),-1)))
         x = F.tanh(self.fc2(x))
@@ -103,7 +103,7 @@ class Critic(nn.Module):
 
   def forward(self, state, action=None):
     if len(self.obs_space) > 1:
-        x = F.tanh((self.conv1(state.view(-1,1,64,64))))
+        x = F.tanh((self.conv1(state.view(-1,4,64,64))))
         x = F.tanh((self.conv2(x)))
         if self.state_action:
             x = F.tanh(self.fc1(torch.cat([x.view(x.size(0),-1), action], dim=1)))
