@@ -226,7 +226,7 @@ def main():
     parser.add_argument('--TEST_INTERVAL',default=1000,type=int)
     parser.add_argument('--UPDATE_INTERVAL',default=1,type=int)
     parser.add_argument('--UPDATE_START',default=10000,type=int)
-    parser.add_argument('--VALUE_FNC',action='store_false')
+    parser.add_argument('--VALUE_FNC',action='store_true')
 
     args = parser.parse_args()
     if not(os.path.exists('data')):
