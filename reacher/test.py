@@ -1,33 +1,54 @@
 from pyrep import PyRep
+from pyrep.robots.arms import youBot
 from os.path import dirname, join, abspath
+import os
 import time
+import numpy as np
+import math
+from images_to_video import im_to_vid
 
-panda = False
+if not(os.path.exists('test_data')):
+    os.makedirs('test_data')
+imtovid = im_to_vid('test_data')
 
 pr = PyRep()
-SCENE_FILE = join(dirname(abspath(__file__)), 'panda_scene.ttt' if panda==True else 'reacher_v2.ttt')
+SCENE_FILE = join(dirname(abspath(__file__)), 'youbot.ttt')
 # Launch the application with a scene file that contains a robot
 pr.launch(SCENE_FILE,headless=True) 
-pr.set_simulation_timestep(0.05)
-pr.start()  # Start the simulation
+pr.start()
+time.sleep(0.1)
+LOOPS = 10
+agent = pr.get_arm(youBot)
+target = pr.get_object('target')
+camera = pr.get_vision_sensor('side_camera')
+position_min, position_max = [-0.3, 0.5, 0.25], [0.3, 0.7, 0.4]
+starting_joint_positions = agent.get_joint_positions()
 
-joint = pr.get_joint('joint_1' if panda==True else 'joint_1')
-joint.set_control_loop_enabled(0)
-joint.set_motor_locked_at_zero_velocity(1)
-print('Joint Pos:',joint.get_joint_position())
-print('Joint Type:',joint.get_joint_type())
-print('Joint Mode',joint.get_joint_mode())
-print('Control loop enable:',joint.is_control_loop_enabled())
-print('Motor enable:',joint.is_motor_enabled())
-print('Motor locked at 0 velocity:',joint.is_motor_locked_at_zero_velocity())
+img_all = []
+for i in range(LOOPS):
+    agent.set_joint_positions(starting_joint_positions)
+    pos = np.random.uniform(position_min, position_max).tolist()
+    target.set_position(pos)
+    
+    path = agent.get_path(position=pos, orientation=[0, math.radians(180), 0])
 
-#joint.set_joint_mode(5)
+    if path is None:
+        print('NO PATH')
+        continue
 
-for _ in range(4):
-    joint.set_joint_target_velocity(1)
-    pr.step()
-    print('Joint Pos:',joint.get_joint_position())
-    print('Joint Targ Vel:',joint.get_joint_target_velocity())
-    print('Joint Vel:',joint.get_joint_velocity())
+    done = False
+    img = camera.capture_rgb()*256
+    while not done:
+        img_all.append(img)
+        done = path.step()
+        time.sleep(0.02)
+        img = camera.capture_rgb()*256
+
+    print("Reached target %s"%i)
+
+home = os.path.expanduser('~')
+os.chdir(join(home,'robotics_drl/reacher'))
+imtovid.from_list(img_all,0)
+
 pr.stop()
 pr.shutdown()
