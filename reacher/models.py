@@ -55,25 +55,27 @@ class SoftActor(nn.Module):
     if len(self.obs_space) > 1:
         self.conv1 = nn.Conv2d(4,16,kernel_size=4, stride=2) # Check here for dim (frame staking)
         self.conv2 = nn.Conv2d(16,32,kernel_size=4, stride=2)
+        self.conv3 = nn.Conv2d(32,32,kernel_size=4, stride=2)
 
         def conv2d_size_out(size, kernel_size = 4, stride = 2):
             return (size - (kernel_size - 1) - 1) // stride + 1
 
-        conv_h = conv2d_size_out(conv2d_size_out(64))
-        conv_w = conv2d_size_out(conv2d_size_out(64))
+        conv_h = conv2d_size_out(conv2d_size_out(conv2d_size_out(64)))
+        conv_w = conv2d_size_out(conv2d_size_out(conv2d_size_out(64)))
 
-        self.fc1 = nn.Linear(conv_h*conv_w*32,256)
-        self.fc2 = nn.Linear(256,self.action_space*2)
+        self.fc1 = nn.Linear(conv_h*conv_w*32,hidden_size)
+        self.fc2 = nn.Linear(hidden_size,self.action_space*2)
     else:
         layers = [nn.Linear(self.obs_space[0], hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, self.action_space*2)] # nn.Softmax(dim=0))
         self.policy = nn.Sequential(*layers)
 
   def forward(self, state):
     if len(self.obs_space) > 1:
-        x = F.tanh((self.conv1(state.view(-1,4,64,64))))
-        x = F.tanh((self.conv2(x)))
-        x = F.tanh(self.fc1(x.view(x.size(0),-1)))
-        x = F.tanh(self.fc2(x))
+        x = F.relu((self.conv1(state.view(-1,4,64,64))))
+        x = F.relu((self.conv2(x)))
+        x = F.relu((self.conv3(x)))
+        x = F.relu(self.fc1(x.view(x.size(0),-1)))
+        x = F.relu(self.fc2(x))
         policy_mean, policy_log_std = x.view(-1,self.action_space*2).chunk(2,dim=1)
     else:
         policy_mean, policy_log_std = self.policy(state).view(-1,self.action_space*2).chunk(2,dim=1)
@@ -93,14 +95,15 @@ class Critic(nn.Module):
     if len(self.obs_space) > 1:
         self.conv1 = nn.Conv2d(4, 16, kernel_size=4, stride=2) # Check here for dim (frame staking)
         self.conv2 = nn.Conv2d(16, 32, kernel_size=4, stride=2)
+        self.conv3 = nn.Conv2d(32,32,kernel_size=4, stride=2)
 
         def conv2d_size_out(size, kernel_size = 4, stride = 2):
             return (size - (kernel_size - 1) - 1) // stride + 1
 
-        conv_h = conv2d_size_out(conv2d_size_out(64))
-        conv_w = conv2d_size_out(conv2d_size_out(64))
-        self.fc1 = nn.Linear(conv_h*conv_w*32 + (self.action_space if self.state_action else 0), 256)
-        self.fc2 = nn.Linear(256,output_size)
+        conv_h = conv2d_size_out(conv2d_size_out(conv2d_size_out(64)))
+        conv_w = conv2d_size_out(conv2d_size_out(conv2d_size_out(64)))
+        self.fc1 = nn.Linear(conv_h*conv_w*32 + (self.action_space if self.state_action else 0), hidden_size)
+        self.fc2 = nn.Linear(hidden_size,output_size)
     else:
         layers = [nn.Linear(self.obs_space[0] + (self.action_space if self.state_action else 0), hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, output_size)]
         if layer_norm:
@@ -109,14 +112,15 @@ class Critic(nn.Module):
 
   def forward(self, state, action=None):
     if len(self.obs_space) > 1:
-        x = F.tanh((self.conv1(state.view(-1,4,64,64))))
-        x = F.tanh((self.conv2(x)))
+        x = F.relu((self.conv1(state.view(-1,4,64,64))))
+        x = F.relu((self.conv2(x)))
+        x = F.relu((self.conv3(x)))
         if self.state_action:
-            x = F.tanh(self.fc1(torch.cat([x.view(x.size(0),-1), action], dim=1)))
+            x = F.relu(self.fc1(torch.cat([x.view(x.size(0),-1), action], dim=1)))
         else:
-            x = F.tanh(self.fc1(x.view(x.size(0),-1)))
+            x = F.relu(self.fc1(x.view(x.size(0),-1)))
 
-        value = F.tanh(self.fc2(x))
+        value = F.relu(self.fc2(x))
 
     else:
         if self.state_action:
