@@ -123,9 +123,8 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                      }
 
             policy = actor(batch['state'])
-            action, log_prob = policy.rsample_log_prob()
+            action, log_pi = policy.rsample_log_prob()
             #Automatic entropy tuning
-            log_pi = log_prob.sum(dim=1)
             alpha_loss = -(log_alpha.float() * (log_pi + target_entropy).float().detach()).mean()
             alpha_optimizer.zero_grad()
             alpha_loss.backward()
@@ -141,7 +140,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 # No value function network
                 next_policy = actor(batch['next_state'])
                 next_actions, next_log_prob = next_policy.rsample_log_prob()
-                target_qs = torch.min(target_critic_1(next_observations, new_next_actions), target_critic_2(next_observations, new_next_actions)) - alpha * new_next_log_prob
+                target_qs = torch.min(target_critic_1(batch['next_state'], next_actions), target_critic_2(batch['next_state'], next_actions)) - alpha * next_log_prob
                 y_q = batch['reward'] + DISCOUNT * (1 - batch['done']) * target_qs.detach()
 
             q_loss = (critic_1(batch['state'], batch['action']) - y_q).pow(2).mean() + (critic_2(batch['state'], batch['action']) - y_q).pow(2).mean()
