@@ -29,6 +29,13 @@ class TanhNormal(Distribution):
   def rsample(self):
     return torch.tanh(self.normal.rsample())
 
+  def rsample_log_prob(self):
+    value = self.normal.rsample()
+    log_prob = self.normal.log_prob(value)
+    value = torch.tanh(value)
+    log_prob -= torch.log1p(-value.pow(2) + 1e-6)
+    return value, log_prob.sum(dim=1)
+
   # Calculates log probability of value using the change-of-variables technique (uses log1p = log(1 + x) for extra numerical stability)
   def log_prob(self, value):
     inv_value = (torch.log1p(value) - torch.log1p(-value)) / 2  # artanh(y)

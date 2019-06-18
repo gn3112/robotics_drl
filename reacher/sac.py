@@ -123,10 +123,9 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                      }
 
             policy = actor(batch['state'])
-            action = policy.rsample()  # a(s) is a sample from μ(·|s) which is differentiable wrt θ via the reparameterisation trick
-
+            action, log_prob = policy.rsample_log_prob()
             #Automatic entropy tuning
-            log_pi = policy.log_prob(action).sum(dim=1)
+            log_pi = log_prob.sum(dim=1)
             alpha_loss = -(log_alpha.float() * (log_pi + target_entropy).float().detach()).mean()
             alpha_optimizer.zero_grad()
             alpha_loss.backward()
@@ -141,8 +140,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             else:
                 # No value function network
                 next_policy = actor(batch['next_state'])
-                next_actions = next_policy.rsample()
-                next_log_prob = next_policy.log_prob(next_actions)
+                next_actions, next_log_prob = next_policy.rsample_log_prob()
                 target_qs = torch.min(target_critic_1(next_observations, new_next_actions), target_critic_2(next_observations, new_next_actions)) - alpha * new_next_log_prob
                 y_q = batch['reward'] + DISCOUNT * (1 - batch['done']) * target_qs.detach()
 
