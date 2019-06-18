@@ -49,16 +49,16 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             #                     T.ToTensor()])
             return a
 
-    actor = SoftActor(HIDDEN_SIZE, action_space, obs_space,torch.tensor([0.2 for _ in range(action_space)], dtype=torch.float64, device=device).view(-1,action_space)).double().to(device)
-    critic_1 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True).double().to(device)
-    critic_2 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True).double().to(device)
+    actor = SoftActor(HIDDEN_SIZE, action_space, obs_space).float().to(device)
+    critic_1 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True).float().to(device)
+    critic_2 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True).float().to(device)
     if VALUE_FNC:
-        value_critic = Critic(HIDDEN_SIZE, 1, obs_space, action_space).double().to(device)
-        target_value_critic = create_target_network(value_critic).double().to(device)
+        value_critic = Critic(HIDDEN_SIZE, 1, obs_space, action_space).float().to(device)
+        target_value_critic = create_target_network(value_critic).float().to(device)
         value_critic_optimiser = optim.Adam(value_critic.parameters(), lr=LEARNING_RATE)
     else:
-        target_critic_1 = create_target_network(critic_2).double().to(device)
-        target_critic_2 = create_target_network(critic_2).double().to(device)
+        target_critic_1 = create_target_network(critic_2)
+        target_critic_2 = create_target_network(critic_2)
     actor_optimiser = optim.Adam(actor.parameters(), lr=LEARNING_RATE)
     critics_optimiser = optim.Adam(list(critic_1.parameters()) + list(critic_2.parameters()), lr=LEARNING_RATE)
     D = deque(maxlen=REPLAY_SIZE)
@@ -71,7 +71,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     alpha_optimizer = optim.Adam([log_alpha], lr=LEARNING_RATE)
 
     state, done = env.reset(), False
-    state = resize(state).double().to(device)
+    state = resize(state).float().to(device)
     pbar = tqdm(range(1, MAX_STEPS + 1), unit_scale=1, smoothing=0)
 
     steps = 0
@@ -79,18 +79,18 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
         with torch.no_grad():
             if step < UPDATE_START:
               # To improve exploration take actions sampled from a uniform random distribution over actions at the start of training
-              action = torch.tensor(env.sample_action(), dtype=torch.float64, device=device).unsqueeze(dim=0)
+              action = torch.tensor(env.sample_action(), dtype=torch.float32, device=device).unsqueeze(dim=0)
             else:
               # Observe state s and select action a ~ μ(a|s)
               # action = actor(state).sample()
-              action = actor(state).sample().double().to(device)
+              action = actor(state).sample().float().to(device)
 
             # Execute a in the environment and observe next state s', reward r, and done signal d to indicate whether s' is terminal
             next_state, reward, done = env.step(action.squeeze(dim=0).cpu())#.long
-            next_state = resize(next_state).double().to(device)
+            next_state = resize(next_state).float().to(device)
             # Store (s, a, r, s', d) in replay buffer D
             # Store (s, a, r, s', d) in replay buffer D
-            D.append({'state': state.unsqueeze(dim=0), 'action': action, 'reward': torch.tensor([reward],dtype=torch.float64,device=device), 'next_state': next_state.unsqueeze(dim=0), 'done': torch.tensor([True if reward == 1 else False], dtype=torch.float64, device=device)})
+            D.append({'state': state.unsqueeze(dim=0), 'action': action, 'reward': torch.tensor([reward],dtype=torch.float32,device=device), 'next_state': next_state.unsqueeze(dim=0), 'done': torch.tensor([True if reward == 1 else False], dtype=torch.float32, device=device)})
             state = next_state
             # If s' is terminal, reset environment state
             steps += 1
@@ -98,7 +98,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             if done or steps>step_limit: #TODO: incorporate step limit in the environment
                 eval_c2 = True #TODO: multiprocess pyrep with a session for each testing and training
                 steps = 0
-                state = resize(env.reset()).double().to(device)
+                state = resize(env.reset()).float().to(device)
 
         if step > UPDATE_START and step % UPDATE_INTERVAL == 0:
             # Randomly sample a batch of transitions B = {(s, a, r, s', d)} from D
@@ -127,12 +127,12 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
             #Automatic entropy tuning
             log_pi = policy.log_prob(action).sum(dim=1)
-            alpha_loss = -(log_alpha.double() * (log_pi + target_entropy).double().detach()).mean()
+            alpha_loss = -(log_alpha.float() * (log_pi + target_entropy).float().detach()).mean()
             alpha_optimizer.zero_grad()
             alpha_loss.backward()
             alpha_optimizer.step()
             alpha = log_alpha.exp()
-            weighted_sample_entropy = (alpha.double() * log_pi).view(-1,1)
+            weighted_sample_entropy = (alpha.float() * log_pi).view(-1,1)
 
             # Compute targets for Q and V functions
             if VALUE_FNC:
@@ -143,7 +143,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 next_policy = actor(batch['next_state'])
                 next_actions = next_policy.rsample()
                 next_log_prob = next_policy.log_prob(next_actions)
-                target_qs = torch.min(target_critic_1(batch['next_state'], next_actions), target_critic_2(batch['next_state'], next_actions)) - alpha.double() * next_log_prob
+                target_qs = torch.min(target_critic_1(next_observations, new_next_actions), target_critic_2(next_observations, new_next_actions)) - alpha * new_next_log_prob
                 y_q = batch['reward'] + DISCOUNT * (1 - batch['done']) * target_qs.detach()
 
             q_loss = (critic_1(batch['state'], batch['action']) - y_q).pow(2).mean() + (critic_2(batch['state'], batch['action']) - y_q).pow(2).mean()

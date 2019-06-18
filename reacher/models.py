@@ -40,11 +40,10 @@ class TanhNormal(Distribution):
 
 
 class SoftActor(nn.Module):
-  def __init__(self, hidden_size, action_space, obs_space, std):
+  def __init__(self, hidden_size, action_space, obs_space):
     super().__init__()
     self.action_space = action_space
     self.obs_space = obs_space
-    self.std = std
     self.log_std_min, self.log_std_max = -20, 2  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
     if len(self.obs_space) > 1:
         self.conv1 = nn.Conv2d(4,16,kernel_size=4, stride=2) # Check here for dim (frame staking)

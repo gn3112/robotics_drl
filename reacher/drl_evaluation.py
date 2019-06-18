@@ -16,9 +16,9 @@ class evaluation_sac(object):
                 return torch.tensor(a)
 
             self.resize = resize
-        
+
         self.ep = 0
-        
+
         for _ in range(n_states):
             state = self.env.reset()
             action = self.env.sample_action()
@@ -28,8 +28,8 @@ class evaluation_sac(object):
         qvalues = 0
         for state_action in self.states_eval:
             with torch.no_grad():
-                state = self.resize(state_action[0]).double().to(self.device)
-                action = torch.tensor(state_action[1]).double().to(self.device).view(-1,self.env.action_space())
+                state = self.resize(state_action[0]).float().to(self.device)
+                action = torch.tensor(state_action[1]).float().to(self.device).view(-1,self.env.action_space())
                 qvalues += (critic_1(state,action)[0] + critic_2(state,action)[0])/2
 
         return (qvalues/len(self.states_eval)).item()
@@ -42,7 +42,7 @@ class evaluation_sac(object):
                 state, done, total_reward, steps_ep = self.env.reset(), False, 0, 0
                 img_ep = []
                 while True:
-                    action = actor(self.resize(state).double().to(self.device)).mean
+                    action = actor(self.resize(state).float().to(self.device)).mean
                     steps_ep += 1
                     state, reward, done = self.env.step(action.detach().cpu().squeeze(dim=0))
                     total_reward += reward
