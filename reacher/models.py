@@ -45,7 +45,7 @@ class SoftActor(nn.Module):
     self.action_space = action_space
     self.obs_space = obs_space
     self.std = std
-    self.log_std_min, self.log_std_max = -0.2, 0.2  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
+    self.log_std_min, self.log_std_max = -20, 2  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
     if len(self.obs_space) > 1:
         self.conv1 = nn.Conv2d(4,16,kernel_size=4, stride=2) # Check here for dim (frame staking)
         self.conv2 = nn.Conv2d(16,32,kernel_size=4, stride=2)

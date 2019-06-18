@@ -57,8 +57,8 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
         target_value_critic = create_target_network(value_critic).double().to(device)
         value_critic_optimiser = optim.Adam(value_critic.parameters(), lr=LEARNING_RATE)
     else:
-        target_critic_1 = create_target_network(critic_2)
-        target_critic_2 = create_target_network(critic_2)
+        target_critic_1 = create_target_network(critic_2).double().to(device)
+        target_critic_2 = create_target_network(critic_2).double().to(device)
     actor_optimiser = optim.Adam(actor.parameters(), lr=LEARNING_RATE)
     critics_optimiser = optim.Adam(list(critic_1.parameters()) + list(critic_2.parameters()), lr=LEARNING_RATE)
     D = deque(maxlen=REPLAY_SIZE)
@@ -143,7 +143,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 next_policy = actor(batch['next_state'])
                 next_actions = next_policy.rsample()
                 next_log_prob = next_policy.log_prob(next_actions)
-                target_qs = torch.min(target_critic_1(next_observations, new_next_actions), target_critic_2(next_observations, new_next_actions)) - alpha * new_next_log_prob
+                target_qs = torch.min(target_critic_1(batch['next_state'], next_actions), target_critic_2(batch['next_state'], next_actions)) - alpha.double() * next_log_prob
                 y_q = batch['reward'] + DISCOUNT * (1 - batch['done']) * target_qs.detach()
 
             q_loss = (critic_1(batch['state'], batch['action']) - y_q).pow(2).mean() + (critic_2(batch['state'], batch['action']) - y_q).pow(2).mean()
