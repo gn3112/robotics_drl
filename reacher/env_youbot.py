@@ -1,4 +1,5 @@
 from pyrep import PyRep
+from pyrep.robots.arms import youBot
 from math import pi, sqrt
 import random
 import numpy as np
@@ -7,12 +8,16 @@ import torch
 import time
 
 class environment(object):
-    def __init__(self, obs_lowdim=True, rpa=6):
+    def __init__(self, manipulator=False, base=True, obs_lowdim=True, rpa=6):
         self.pr = PyRep()
         SCENE_FILE = join(dirname(abspath(__file__)), 'youbot.ttt')
         self.pr.launch(SCENE_FILE,headless=True)
         self.pr.start()
         time.sleep(0.1)
+
+        self.arm = self.pr.get_arm(youBot)
+        self.arm_start_pos = self.arm.get_joint_positions()
+
         self.wheel = []
         self.slipping = []
         for lr in ['fl','rl','rr','fr']:
@@ -21,24 +26,23 @@ class environment(object):
 
         self.target = self.pr.get_object('target')
         self.base_ref = self.pr.get_dummy('youBot_ref')
+        self.tip = self.pr.get_dummy('youBot_tip')
         self.youBot = self.pr.get_object('youBot')
         self.camera = self.pr.get_vision_sensor('Vision_sensor')
+        self.collection_arm = self.pr.get_object('youBot_arm')
 
         self.wheel_joint_handle = []
         joint_name = ['rollingJoint_fl','rollingJoint_rl','rollingJoint_rr','rollingJoint_fr']
         for joint in joint_name:
             self.wheel_joint_handle.append(self.pr.get_joint(joint))
 
+
+        self.manipulator = manipulator
+        self.base = base
         self.rpa = rpa
         self.done = False
         self.obs_lowdim = obs_lowdim
         self.action = [0,0,0]
-
-        ForwBackVel_range = [-240,240]
-        LeftRightVel_range = [-240,240]
-        RotVel_range = [-240,240]
-        self.xy_vel_range = []
-        self.xy_vel = [0,0]
 
     def reset_wheel(self):
         p = [[-pi/4,0,0],[pi/4,0,pi/4]]
@@ -55,19 +59,22 @@ class environment(object):
         self.wheel_joint_handle[1].set_joint_target_velocity(-forwBackVel+leftRightVel-rotVel)
         self.wheel_joint_handle[2].set_joint_target_velocity(-forwBackVel-leftRightVel+rotVel)
         self.wheel_joint_handle[3].set_joint_target_velocity(-forwBackVel+leftRightVel+rotVel)
-        for _ in range(self.rpa):
-            pos_prev = self.base_ref.get_position()
-            self.pr.step()
-            pos_next = self.base_ref.get_position()
 
-            for i in range(2):
-                self.xy_vel[i] = ((pos_next[i] - pos_prev[i]) / 0.05)
+    def move_manipulator(self,joints_vel=[0,0,0,0,0]):
+        self.arm.set_joint_target_velocities(joint_vel)
 
     def render(self):
         img = self.camera.capture_rgb() # (dim,dim,3)
         return img*256
 
-    def get_observation(self):
+    def get_observation_manipulator(self):
+        arm_joint_pos = self.arm.get_joint_positions()
+        arm_joint_vel = self.arm.get_joint_velocities()
+        tip_pos = self.tip.get_position()
+        tip_or = self.tip.get_orientation()
+        return np.concatenate((arm_joint_pos, arm_joint_vel, tip_pos, tip_or), axis=0)
+
+    def get_observation_base(self):
         if self.obs_lowdim:
             obs = []
             or_ = self.base_ref.get_orientation()
@@ -78,9 +85,33 @@ class environment(object):
         else:
             return None # This camera is mounted on the robot arm not the top view camera
 
+    def get_observation(self):
+        if self.base and self.manipulator:
+            return np.concatenate(self.get_observation_manipulator(), self.get_observation_base())
+        elif self.base:
+            return self.get_observation_base()
+        elif self.manipulator:
+            return self.get_observation_manipulator()
+
     def step(self,action):
         self.action = action
-        self.move_base(forwBackVel=action[0],leftRightVel=action[1],rotVel=action[2])
+
+        if self.base and self.manipulator:
+            self.move_base(forwBackVel=action[0],leftRightVel=action[1],rotVel=action[2])
+            self.move_manipulator(joints_vel=action[3])
+        elif self.base:
+            self.move_base(forwBackVel=action[0],leftRightVel=action[1],rotVel=action[2])
+        elif self.manipulator:
+            self.move_manipulator(joints_vel=action[0])
+
+        for _ in range(self.rpa):
+            pos_prev = self.base_ref.get_position()
+            self.pr.step()
+            pos_next = self.base_ref.get_position()
+
+            for i in range(2):
+                self.xy_vel[i] = ((pos_next[i] - pos_prev[i]) / 0.05)
+
         target_pos = self.target.get_position()
         youbot_pos = self.base_ref.get_position()
         dist_ee_target = sqrt((youbot_pos[0] - target_pos[0])**2 + \
@@ -99,12 +130,20 @@ class environment(object):
             reward = -dist_ee_target/3
 
         state = self.get_observation()
-        return state, reward, self.done
+            return state, reward, self.done
 
     def reset(self):
-        self.reset_target_position(random_=True)
-        self.reset_robot_position(random_=True)
-        for _ in range(4): self.move_base()
+        if self.base and self.manipulator:
+            self.reset_target_position(random_=True)
+            self.reset_base_position(random_=True)
+            self.reset_arm()
+        elif self.base:
+            self.reset_target_position(random_=True)
+            self.reset_base_position(random_=True)
+
+        elif self.manipulator:
+            self.reset_arm()
+
         state = self.get_observation()
         return state
 
@@ -117,10 +156,9 @@ class environment(object):
         self.target.set_position([x_T,y_T,0.0275])
         self.done = False
 
-    def reset_robot_position(self,random_=False, position=[0.5,0.5], orientation=0):
+    def reset_base_position(self,random_=False, position=[0.5,0.5], orientation=0):
         if random_:
             target_pos = self.target.get_position()
-            # Make sure target and robot are away from each other?
             x_L, y_L = self.rand_bound()
             while abs(sqrt(x_L**2 + y_L**2) - sqrt(target_pos[0]**2 + target_pos[1]**2)) < 0.5:
                 x_L, y_L = self.rand_bound()
@@ -130,6 +168,17 @@ class environment(object):
 
         self.youBot.set_position([x_L,y_L,0.095750])
         self.youBot.set_orientation([-90*pi/180 if orientation<0 else 90*pi/180,orientation,-90*pi/180 if orientation<0 else 90*pi/180])
+        for _ in range(4):
+            self.move_base()
+            self.pr.step()
+
+    def reset_arm(self):
+        self.arm.set_joint_positions(self.arm_start_pos)
+        for _ in range(4):
+            self.move_manipulator()
+            self.pr.step()
+        # Need joint intervals
+        # Need a collision check
 
     def terminate(self):
         self.pr.start()  # Stop the simulation
