@@ -28,8 +28,7 @@ class environment(object):
         self.base_ref = self.pr.get_dummy('youBot_ref')
         self.tip = self.pr.get_dummy('youBot_tip')
         self.youBot = self.pr.get_object('youBot')
-        self.camera = self.pr.get_vision_sensor('Vision_sensor')
-        self.collection_arm = self.pr.get_object('youBot_arm')
+        self.camera = self.pr.get_vision_sensor('Vision_sensor')   
 
         self.wheel_joint_handle = []
         joint_name = ['rollingJoint_fl','rollingJoint_rl','rollingJoint_rr','rollingJoint_fr']
@@ -43,6 +42,7 @@ class environment(object):
         self.done = False
         self.obs_lowdim = obs_lowdim
         self.action = [0,0,0]
+        self.xy_vel = [0,0]
 
     def reset_wheel(self):
         p = [[-pi/4,0,0],[pi/4,0,pi/4]]
@@ -130,7 +130,7 @@ class environment(object):
             reward = -dist_ee_target/3
 
         state = self.get_observation()
-            return state, reward, self.done
+        return state, reward, self.done
 
     def reset(self):
         if self.base and self.manipulator:
