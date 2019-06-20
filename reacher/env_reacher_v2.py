@@ -13,7 +13,6 @@ from PIL import Image
 def resize(a):
     resize = T.Compose([T.ToPILImage(),
                         T.Grayscale(num_output_channels=1),
-                        T.Resize(64, interpolation=Image.BILINEAR),
                         T.ToTensor()])
     return resize(np.uint8(a))
 
@@ -83,17 +82,21 @@ class environment(object):
             tip_target_vec = np.array(tip_pos) - np.array(target_pos)
 
             return np.concatenate((cos_joints, sin_joints, joints_pos, joints_vel, tip_target_vec[0:2]),axis=0)
+       
         else:
-            new_obs = resize(self.render()).view(64,64,1)
-            if self.steps_ep == 0:
-                obs = new_obs.repeat(1,1,self.frames)
-            else:
-                for i in range(self.frames-1):
-                    self.prev_obs[:,:,i] = self.prev_obs[:,:,i+1]
-                self.prev_obs[:,:,3] = new_obs[:,:,0]
-                obs = self.prev_obs
+            new_obs = resize(self.render()).view(-1,64,64)
 
+            if self.steps_ep == 0:
+                obs = new_obs.expand(self.frames,64,64)
+            else:
+                obs = self.prev_obs
+                for i in range(self.frames-1):
+                    obs[i,:,:] = obs[i+1,:,:]
+                
+                obs[self.frames-1,:,:] = new_obs
+            
             self.prev_obs = obs
+
             return obs.view(-1,64,64)
 
     def step(self,action):
