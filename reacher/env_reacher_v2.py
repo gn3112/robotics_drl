@@ -96,7 +96,6 @@ class environment(object):
                 obs[self.frames-1,:,:] = new_obs
             
             self.prev_obs = obs
-
             return obs.view(-1,64,64)
 
     def step(self,action):
