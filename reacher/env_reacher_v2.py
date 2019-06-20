@@ -90,10 +90,10 @@ class environment(object):
             else:
                 for i in range(self.frames-1):
                     self.prev_obs[:,:,i] = self.prev_obs[:,:,i+1]
-                self.prev_obs[:,:,3] = new_obs[:,:,0]
+
+                self.prev_obs[:,:,self.frames-1] = new_obs[:,:,0]
                 obs = self.prev_obs
 
-            self.prev_obs = obs
             return obs.view(-1,64,64)
 
     def step(self,action):
