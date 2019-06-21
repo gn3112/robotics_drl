@@ -32,19 +32,25 @@ class youBot_controller(environment):
         img_all = []
         a=0
         while not done:
+
             img = self.camera.capture_rgb()*256
             img_all.append(img)
-            action_base, arm_status = self.base_actuation()
-            self.step(action_base)
+            if a == 0:
+                action_base, arm_status = self.base_actuation()
+                self.step(action_base)
+            
             if arm_status == True and a==0:
                 a=1
                 path = self.arm_actuation()
                 if path is None:
                     print('NO PATH')
                     break
+                else:
+                    print('PATH EXISTS')
 
             if arm_status == True:
                 done = path.step()
+
         return action_base, done, img_all
 
     def base_actuation(self):
@@ -104,11 +110,11 @@ class youBot_controller(environment):
                     break
 
 def main():
-    if not(os.path.exists('demonstrations')):
-        os.makedirs('demonstrations')
-    imtovid = im_to_vid('demonstrations')
+    if not(os.path.exists('data/demonstrations')):
+        os.makedirs('data/demonstrations')
+    imtovid = im_to_vid('data/demonstrations')
     controller = youBot_controller()
-    for ep in range(10):
+    for ep in range(5):
         controller.reset()
         _,_,img_all = controller.get_action_to_target()
         home = os.path.expanduser('~')
