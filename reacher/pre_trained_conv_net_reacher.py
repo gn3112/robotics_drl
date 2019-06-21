@@ -11,6 +11,11 @@ import os
 import random
 import logz
 
+def weights_init(m):
+    if isinstance(m, nn.Conv2d):
+        xavier(m.weight.data)
+        xavier(m.bias.data)
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class CoordConv2d(nn.Module):
   def __init__(self, in_channels, out_channels, kernel_size, height, width, stride=1, padding=0, dilation=1, groups=1, bias=True, padding_mode='zeros'):
@@ -94,6 +99,7 @@ def main():
     env = environment(continuous_control=True, obs_lowdim=False, rpa=4, frames=4)
     env.reset()
     net = network().to(device)
+    net.apply(weights_init)
     optimiser = optim.Adam(net.parameters(), lr=LR)
 
     pbar = tqdm(range(1, STEPS + 1), unit_scale=1, smoothing=0)
