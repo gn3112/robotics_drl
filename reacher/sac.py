@@ -31,6 +31,10 @@ def setup_logger(logdir,locals_):
 def optimise(args):
     return None
 
+def weights_init(m):
+    if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Linear):
+        torch.nn.init.xavier_uniform(m.weight.data)
+
 def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_STEPS, POLYAK_FACTOR, REPLAY_SIZE, TEST_INTERVAL, UPDATE_INTERVAL, UPDATE_START, ENV, OBSERVATION_LOW, VALUE_FNC, logdir):
     setup_logger(logdir, locals())
     ENV = __import__(ENV)
@@ -53,6 +57,9 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     actor = SoftActor(HIDDEN_SIZE, action_space, obs_space).float().to(device)
     critic_1 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True).float().to(device)
     critic_2 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True).float().to(device)
+    actor.apply(weights_init)
+    critic_1.apply(weights_init)
+    critic_2.apply(weights_init)
     if VALUE_FNC:
         value_critic = Critic(HIDDEN_SIZE, 1, obs_space, action_space).float().to(device)
         target_value_critic = create_target_network(value_critic).float().to(device)
@@ -73,18 +80,20 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
     state, done = env.reset(), False
     state = resize(state).float().to(device)
-    pbar = tqdm(range(1, MAX_STEPS + 1), unit_scale=1, smoothing=0)
+    #pbar = tqdm(range(1, MAX_STEPS + 1), unit_scale=1, smoothing=0)
 
     steps = 0
-    for step in pbar:
+    for step in range(MAX_STEPS):
         with torch.no_grad():
             if step < UPDATE_START:
               # To improve exploration take actions sampled from a uniform random distribution over actions at the start of training
               action = torch.tensor(env.sample_action(), dtype=torch.float32, device=device).unsqueeze(dim=0)
             else:
               # Observe state s and select action a ~ μ(a|s)
-              # action = actor(state).sample()
-              action = actor(state).sample().float().to(device)
+              policy = actor(state)
+              action = policy.sample().float().to(device) 
+              #if (policy.mean).mean() > 0.4: 
+              #    print("GOOD VELOCITY")
             # Execute a in the environment and observe next state s', reward r, and done signal d to indicate whether s' is terminal
             next_state, reward, done = env.step(action.squeeze(dim=0).cpu())#.long
             next_state = resize(next_state).float().to(device)
@@ -197,7 +206,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
             logz.save_pytorch_model(actor.state_dict())
 
-            pbar.set_description('Step: %i | Reward: %f' % (step, return_ep.mean()))
+            #pbar.set_description('Step: %i | Reward: %f' % (step, return_ep.mean()))
 
             actor.train()
             critic_1.train()
