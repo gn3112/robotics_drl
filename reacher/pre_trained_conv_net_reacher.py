@@ -14,6 +14,11 @@ import torchvision
 from math import sin, cos
 
 
+def weights_init(m):
+    if isinstance(m, nn.Conv2d):
+        xavier(m.weight.data)
+        xavier(m.bias.data)
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def weights_init(m):
