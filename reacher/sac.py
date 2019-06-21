@@ -114,14 +114,12 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 reward_batch.append(d['reward'])
                 state_next_batch.append(d['next_state'])
                 done_batch.append(d['done'])
-            print('Size list batch before cat: ', len(state_batch))
             batch = {'state':torch.cat(state_batch,dim=0),
                      'action':torch.cat(action_batch,dim=0),
                      'reward':torch.cat(reward_batch,dim=0),
                      'next_state':torch.cat(state_next_batch,dim=0),
                      'done':torch.cat(done_batch,dim=0)
                      }
-            print('Size batch img: ', batch['state'].size())
             policy = actor(batch['state'])
             action, log_pi = policy.rsample_log_prob()
             #Automatic entropy tuning
