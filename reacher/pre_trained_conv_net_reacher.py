@@ -46,7 +46,7 @@ class network(nn.Module):
         conv_w = conv2d_size_out(conv2d_size_out(conv2d_size_out(64)))
 
         self.fc1 = nn.Linear(conv_h*conv_w*32,256)
-        self.fc2 = nn.Linear(256,6)
+        self.fc2 = nn.Linear(256,4)
 
     def forward(self, state):
         x = F.relu((self.conv1(state.view(-1,4,64,64))))
@@ -55,7 +55,7 @@ class network(nn.Module):
         x = F.relu(self.fc1(x.view(x.size(0),-1)))
         x = (self.fc2(x))
         print(x)
-        joint_pos, target_pos, joint_vel = x.view(-1,6).chunk(3,dim=1)
+        joint_pos, target_pos, joint_vel = x.view(-1,4).chunk(2,dim=1)
         return joint_pos, target_pos, joint_vel
 
 def to_torch(a):
@@ -78,8 +78,8 @@ def get_loss(D,BATCH_SIZE,net):
                  'joint_vel':torch.cat(joint_vel_batch,dim=0),
                  'img':torch.cat(img_batch,dim=0)
                 }
-    pred_joint_pos, pred_target_pos, pred_joint_vel = net(batch['img'])
-    loss = ((batch['target_pos'] - pred_target_pos).pow(2).sum(dim=1) + (batch['joint_pos'] - pred_joint_pos).pow(2).sum(dim=1) + (batch['joint_vel'] - pred_joint_vel).pow(2).sum(dim=1)).mean()
+    pred_target_pos, pred_joint_vel = net(batch['img'])
+    loss = ((batch['target_pos'] - pred_target_pos).pow(2).sum(dim=1) + (batch['joint_vel'] - pred_joint_vel).pow(2).sum(dim=1)).mean()
     return loss
 
 def main():
@@ -115,7 +115,7 @@ def main():
         obs, _, _ = env.step(action)
         target_pos = env.target_position()
         joint_pos = env.agent.get_joint_positions()
-        joint_pos = [cos(joint_pos[0]),sin(joint_pos[1])]
+        #joint_pos = [cos(joint_pos[0]),sin(joint_pos[1])]
         joint_vel = env.agent.get_joint_velocities()
 
         D.append({"target_pos": to_torch(target_pos[:2]).view(1,-1), "joint_pos": to_torch(joint_pos).view(1,-1), "joint_vel": to_torch(joint_vel).view(1,-1), "img": to_torch(obs).unsqueeze(dim=0)})
@@ -127,7 +127,7 @@ for i in range(VALIDSET_SIZE):
         obs, _, _ = env.step(action)
         target_pos = env.target_position()
         joint_pos = env.agent.get_joint_positions() 
-        joint_pos = [cos(joint_pos[0]),sin(joint_pos[1])]
+        #joint_pos = [cos(joint_pos[0]),sin(joint_pos[1])]
         joint_vel = env.agent.get_joint_velocities()
         
         V.append({"target_pos": to_torch(target_pos[:2]).view(1,-1), "joint_pos": to_torch(joint_pos).view(1,-1), "joint_vel": to_torch(joint_vel).view(1,-1), "img": to_torch(obs).unsqueeze(dim=0)})
