@@ -153,14 +153,14 @@ class environment(object):
         else:
             x_T,y_T = position
 
-        self.target.set_position([x_T,y_T,0.0275])
+        self.target.set_position([x_T,y_T,0.15])
         self.done = False
 
     def reset_base_position(self,random_=False, position=[0.5,0.5], orientation=0):
         if random_:
             target_pos = self.target.get_position()
             x_L, y_L = self.rand_bound()
-            while abs(sqrt(x_L**2 + y_L**2) - sqrt(target_pos[0]**2 + target_pos[1]**2)) < 0.5:
+            while abs(sqrt(x_L**2 + y_L**2) - sqrt(target_pos[0]**2 + target_pos[1]**2)) < 0.3:
                 x_L, y_L = self.rand_bound()
             orientation = random.random()*2*pi
         else:
@@ -189,7 +189,7 @@ class environment(object):
 
     def rand_bound(self):
         xy_min = 0
-        xy_max = 1.4
+        xy_max = 1
         x = random.random()*(xy_max-xy_min) + xy_min
         y_max = sqrt(xy_max**2-x**2)
         y_min = 0
