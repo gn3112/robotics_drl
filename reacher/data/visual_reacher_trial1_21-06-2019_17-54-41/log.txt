@@ -1,0 +1,2 @@
+Training steps	Validation return	Validation steps	Validation return std	Validation steps std	Q-value evaluation	Q-network loss	Policy-network loss	Alpha loss	Alpha
+16000	-0.14421253622769553	60.0	0.0647803821806402	0.0	3.511794328689575	0.057962283	-4.495084	-0.99961364	[0.74044913]
