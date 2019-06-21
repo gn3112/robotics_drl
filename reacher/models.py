@@ -55,11 +55,11 @@ class SoftActor(nn.Module):
     self.obs_space = obs_space
     self.log_std_min, self.log_std_max = -20, 2  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
     if len(self.obs_space) > 1:
-        self.conv1 = nn.Conv2d(4,16,kernel_size=4, stride=2) # Check here for dim (frame staking)
-        self.conv2 = nn.Conv2d(16,32,kernel_size=4, stride=2)
-        self.conv3 = nn.Conv2d(32,32,kernel_size=4, stride=2)
+        self.conv1 = nn.Conv2d(4,16,kernel_size=4, stride=3) # Check here for dim (frame staking)
+        self.conv2 = nn.Conv2d(16,32,kernel_size=4, stride=3)
+        self.conv3 = nn.Conv2d(32,32,kernel_size=4, stride=3)
 
-        def conv2d_size_out(size, kernel_size = 4, stride = 2):
+        def conv2d_size_out(size, kernel_size = 4, stride = 3):
             return (size - (kernel_size - 1) - 1) // stride + 1
 
         conv_h = conv2d_size_out(conv2d_size_out(conv2d_size_out(64)))
@@ -79,7 +79,6 @@ class SoftActor(nn.Module):
         x = F.relu((self.conv3(x)))
         x = F.relu(self.fc1(x.view(x.size(0),-1)))
         x = (self.fc2(x))
-        print(x[:,1].min().item(),x[:,1].max().item(),x[:,1].mean().item())
         policy_mean, policy_log_std = x.view(-1,self.action_space*2).chunk(2,dim=1)
     else:
         policy_mean, policy_log_std = self.policy(state).view(-1,self.action_space*2).chunk(2,dim=1)
@@ -97,11 +96,11 @@ class Critic(nn.Module):
     self.obs_space = obs_space
 
     if len(self.obs_space) > 1:
-        self.conv1 = nn.Conv2d(4, 16, kernel_size=4, stride=2) # Check here for dim (frame staking)
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=4, stride=2)
-        self.conv3 = nn.Conv2d(32,32,kernel_size=4, stride=2)
+        self.conv1 = nn.Conv2d(4, 16, kernel_size=4, stride=3) # Check here for dim (frame staking)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=4, stride=3)
+        self.conv3 = nn.Conv2d(32,32,kernel_size=4, stride=3)
 
-        def conv2d_size_out(size, kernel_size = 4, stride = 2):
+        def conv2d_size_out(size, kernel_size = 4, stride = 3):
             return (size - (kernel_size - 1) - 1) // stride + 1
 
         conv_h = conv2d_size_out(conv2d_size_out(conv2d_size_out(64)))
