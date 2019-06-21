@@ -9,10 +9,12 @@ from os.path import dirname, join, abspath
 import numpy as np
 from torchvision import transforms as T
 from PIL import Image
+from invert import Invert
 
 def resize(a):
     resize = T.Compose([T.ToPILImage(),
                         T.Grayscale(num_output_channels=1),
+                        Invert(),
                         T.ToTensor(),
                         T.Normalize((0.5,), (0.5,))])
     return resize(np.uint8(a))
@@ -54,13 +56,12 @@ class environment(object):
                 tip_pos = self.tip_position()
                 dist_tip_target = sqrt((tip_pos[0] - self.target_pos[0])**2 + \
                 (tip_pos[1] - self.target_pos[1])**2)
-                if dist_tip_target < 0.054:
+                if dist_tip_target < 0.07:
                     reward = 1
-                    print('TARGET REACHED')
                     self.done = True
                     break
                 else:
-                    reward = -dist_tip_target/10
+                    reward = -dist_tip_target/5
                 print('Reward:%s'%reward)
 
     def render(self):
@@ -117,11 +118,12 @@ class environment(object):
         tip_target_dist = sqrt((tip_pos[0] - self.target_pos[0])**2 + \
         (tip_pos[1] - self.target_pos[1])**2)
 
-        if tip_target_dist < 0.06:
+        if tip_target_dist < 0.07:
             reward = 1
             self.done = True
+            print('TARGET REACHED')
         else:
-            reward = -exp(tip_target_dist)/6
+            reward = -tip_target_dist/3
 
         state = self.get_observation()
 
@@ -173,7 +175,7 @@ class environment(object):
                 self.pr.step()
 
     def sample_action(self):
-        return [(3 * random.random() - 1.5),(3 * random.random() - 1.5)]
+        return [1.3*(3 * random.random() - 1.5),1.3*(3 * random.random() - 1.5)]
 
 
     def display(self):
