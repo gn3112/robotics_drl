@@ -121,7 +121,6 @@ class environment(object):
         if tip_target_dist < 0.07:
             reward = 1
             self.done = True
-            print('TARGET REACHED')
         else:
             reward = -tip_target_dist/3
 
