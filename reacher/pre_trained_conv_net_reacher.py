@@ -40,7 +40,7 @@ class CoordConv2d(nn.Module):
 class network(nn.Module):
     def __init__(self):
         super().__init__()
-        self.conv1 = CoordConv2d(4,16,4,64,64, stride=3)
+        self.conv1 = nn.Conv2d(4,16, 4, stride=3)
         self.conv2 = nn.Conv2d(16,32,kernel_size=4, stride=3)
         self.conv3 = nn.Conv2d(32,32,kernel_size=4, stride=3)
 
@@ -59,9 +59,8 @@ class network(nn.Module):
         x = F.relu((self.conv3(x)))
         x = F.relu(self.fc1(x.view(x.size(0),-1)))
         x = (self.fc2(x))
-        print(x)
-        joint_pos, target_pos, joint_vel = x.view(-1,4).chunk(2,dim=1)
-        return joint_pos, target_pos, joint_vel
+        target_pos, joint_vel = x.view(-1,4).chunk(2,dim=1)
+        return target_pos, joint_vel
 
 def to_torch(a):
     return torch.tensor(a, dtype=torch.float32, device=device)
@@ -84,15 +83,16 @@ def get_loss(D,BATCH_SIZE,net):
                  'img':torch.cat(img_batch,dim=0)
                 }
     pred_target_pos, pred_joint_vel = net(batch['img'])
+
     loss = ((batch['target_pos'] - pred_target_pos).pow(2).sum(dim=1) + (batch['joint_vel'] - pred_joint_vel).pow(2).sum(dim=1)).mean()
     return loss
 
 def main():
-    DATASET_SIZE = 10000
-    STEPS = 20000
-    VALIDSET_SIZE = 300
-    LR = 0.001
-    BATCH_SIZE = 128
+    DATASET_SIZE = 30000
+    STEPS = 200000
+    VALIDSET_SIZE = 2000
+    LR = 0.0003
+    BATCH_SIZE = 64
 
     if not(os.path.exists('data/pre_trained_model')):
                 os.makedirs('data/pre_trained_model')
@@ -113,7 +113,7 @@ def main():
     net.apply(weights_init)
     optimiser = optim.Adam(net.parameters(), lr=LR)
 
-    pbar = tqdm(range(1, STEPS + 1), unit_scale=1, smoothing=0)
+    #pbar = tqdm(range(1, STEPS + 1), unit_scale=1, smoothing=0)
 
     for i in range(DATASET_SIZE):
         action = env.sample_action()
@@ -125,9 +125,10 @@ def main():
 
         D.append({"target_pos": to_torch(target_pos[:2]).view(1,-1), "joint_pos": to_torch(joint_pos).view(1,-1), "joint_vel": to_torch(joint_vel).view(1,-1), "img": to_torch(obs).unsqueeze(dim=0)})
 
-        if i % 50 == 0 and i !=0: env.reset()
+        if i % 50 == 0 and i !=0: 
+            env.reset()
 
-for i in range(VALIDSET_SIZE):
+    for i in range(VALIDSET_SIZE):
         action = env.sample_action()
         obs, _, _ = env.step(action)
         target_pos = env.target_position()
@@ -137,9 +138,10 @@ for i in range(VALIDSET_SIZE):
         
         V.append({"target_pos": to_torch(target_pos[:2]).view(1,-1), "joint_pos": to_torch(joint_pos).view(1,-1), "joint_vel": to_torch(joint_vel).view(1,-1), "img": to_torch(obs).unsqueeze(dim=0)})
         
-        if i % 50 == 0 and i !=0: env.reset()
+        if i % 50 == 0 and i !=0: 
+            env.reset()
 
-    for step in pbar:
+    for step in range(STEPS):
         if len(D) > BATCH_SIZE:
             loss = get_loss(D,BATCH_SIZE,net)
             optimiser.zero_grad()
@@ -149,11 +151,19 @@ for i in range(VALIDSET_SIZE):
             if step % 800 == 0 and step != 0:
                 net.eval()
                 loss_v = get_loss(V,VALIDSET_SIZE,net)
-                pbar.set_description('Loss training: %s | Loss validation: %s' %(loss.item(), loss_v.item()))
                 net.train()
                 logz.log_tabular('Loss training',loss.item())
                 logz.log_tabular('Loss validation',loss_v.item())
                 logz.dump_tabular()
+                #for param in net.parameters():
+                #    print(param.data.size())
+                #pbar.set_description()
+
+            if step % 20000 == 0 and step != 0:     
+                home = os.path.expanduser("~")
+                path = home + "/robotics_drl/reacher/data/pre_trained_model"
+                torch.save(net.state_dict(), os.path.join(path, "model%s.pkl"%step))
+
     
     #home = os.path.expanduser("~")
     #path = home + "/robotics_drl/reacher/pre_trained_net_reacher/model.pkl"
@@ -161,9 +171,6 @@ for i in range(VALIDSET_SIZE):
     #net.eval()
     #get_loss(V,10,net)
 
-    home = os.path.expanduser("~")
-    path = home + "/robotics_drl/reacher/data/pre_trained_net_reacher"
-    torch.save(net.state_dict(), os.path.join(path, "model.pkl"))
     env.terminate()
 
 if __name__ == "__main__":
