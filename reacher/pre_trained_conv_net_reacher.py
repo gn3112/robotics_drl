@@ -10,8 +10,16 @@ from tqdm import tqdm
 import os
 import random
 import logz
+import torchvision
+from math import sin, cos
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def weights_init(m):
+    if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+        nn.init.xavier_uniform(m.weight.data)
+
 class CoordConv2d(nn.Module):
   def __init__(self, in_channels, out_channels, kernel_size, height, width, stride=1, padding=0, dilation=1, groups=1, bias=True, padding_mode='zeros'):
     super().__init__()
@@ -46,6 +54,7 @@ class network(nn.Module):
         x = F.relu((self.conv3(x)))
         x = F.relu(self.fc1(x.view(x.size(0),-1)))
         x = (self.fc2(x))
+        print(x)
         joint_pos, target_pos, joint_vel = x.view(-1,6).chunk(3,dim=1)
         return joint_pos, target_pos, joint_vel
 
@@ -69,15 +78,14 @@ def get_loss(D,BATCH_SIZE,net):
                  'joint_vel':torch.cat(joint_vel_batch,dim=0),
                  'img':torch.cat(img_batch,dim=0)
                 }
-
     pred_joint_pos, pred_target_pos, pred_joint_vel = net(batch['img'])
     loss = ((batch['target_pos'] - pred_target_pos).pow(2).sum(dim=1) + (batch['joint_pos'] - pred_joint_pos).pow(2).sum(dim=1) + (batch['joint_vel'] - pred_joint_vel).pow(2).sum(dim=1)).mean()
     return loss
 
 def main():
-    DATASET_SIZE = 50000
-    STEPS = 600000
-    VALIDSET_SIZE = 5000
+    DATASET_SIZE = 10000
+    STEPS = 20000
+    VALIDSET_SIZE = 300
     LR = 0.001
     BATCH_SIZE = 128
 
@@ -91,33 +99,43 @@ def main():
     D = deque(maxlen=DATASET_SIZE)
     V = deque(maxlen=VALIDSET_SIZE)
     env = environment(continuous_control=True, obs_lowdim=False, rpa=4, frames=4)
-    env.reset()
+    obs = env.reset()
+    home = os.path.expanduser("~")
+    path = home + "/robotics_drl/reacher"
+    os.chdir(path)
+    torchvision.utils.save_image(obs.view(-1,64,64)[0,:,:],"test_inverted.png",normalize=True)
     net = network().to(device)
+    net.apply(weights_init)
     optimiser = optim.Adam(net.parameters(), lr=LR)
 
     pbar = tqdm(range(1, STEPS + 1), unit_scale=1, smoothing=0)
 
-    for _ in range(DATASET_SIZE):
+    for i in range(DATASET_SIZE):
         action = env.sample_action()
         obs, _, _ = env.step(action)
         target_pos = env.target_position()
         joint_pos = env.agent.get_joint_positions()
+        joint_pos = [cos(joint_pos[0]),sin(joint_pos[1])]
         joint_vel = env.agent.get_joint_velocities()
 
         D.append({"target_pos": to_torch(target_pos[:2]).view(1,-1), "joint_pos": to_torch(joint_pos).view(1,-1), "joint_vel": to_torch(joint_vel).view(1,-1), "img": to_torch(obs).unsqueeze(dim=0)})
 
-    for _ in range(VALIDSET_SIZE):
+        if i % 50 == 0 and i !=0: env.reset()
+
+for i in range(VALIDSET_SIZE):
         action = env.sample_action()
         obs, _, _ = env.step(action)
         target_pos = env.target_position()
-        joint_pos = env.agent.get_joint_positions()
+        joint_pos = env.agent.get_joint_positions() 
+        joint_pos = [cos(joint_pos[0]),sin(joint_pos[1])]
         joint_vel = env.agent.get_joint_velocities()
-
+        
         V.append({"target_pos": to_torch(target_pos[:2]).view(1,-1), "joint_pos": to_torch(joint_pos).view(1,-1), "joint_vel": to_torch(joint_vel).view(1,-1), "img": to_torch(obs).unsqueeze(dim=0)})
-
+        
+        if i % 50 == 0 and i !=0: env.reset()
 
     for step in pbar:
-        if len(D) > BATCH_SIZE * 2:
+        if len(D) > BATCH_SIZE:
             loss = get_loss(D,BATCH_SIZE,net)
             optimiser.zero_grad()
             loss.backward()
@@ -131,9 +149,15 @@ def main():
                 logz.log_tabular('Loss training',loss.item())
                 logz.log_tabular('Loss validation',loss_v.item())
                 logz.dump_tabular()
+    
+    #home = os.path.expanduser("~")
+    #path = home + "/robotics_drl/reacher/pre_trained_net_reacher/model.pkl"
+    #net.load_state_dict(torch.load(path))
+    #net.eval()
+    #get_loss(V,10,net)
 
     home = os.path.expanduser("~")
-    path = home + "/robotics_drl/reacher/pre_trained_net_reacher"
+    path = home + "/robotics_drl/reacher/data/pre_trained_net_reacher"
     torch.save(net.state_dict(), os.path.join(path, "model.pkl"))
     env.terminate()
 
