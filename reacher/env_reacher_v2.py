@@ -13,11 +13,12 @@ from PIL import Image
 def resize(a):
     resize = T.Compose([T.ToPILImage(),
                         T.Grayscale(num_output_channels=1),
-                        T.ToTensor()])
+                        T.ToTensor(),
+                        T.Normalize((0.5,), (0.5,))])
     return resize(np.uint8(a))
 
 class environment(object):
-    def __init__(self,continuous_control=True, obs_lowdim=True, rpa=1, frames=4):
+    def __init__(self,continuous_control=True, obs_lowdim=True, rpa=3, frames=4):
         self.pr = PyRep()
         SCENE_FILE = join(dirname(abspath(__file__)), 'reacher_v2.ttt')
         self.pr.launch(SCENE_FILE,headless=True)

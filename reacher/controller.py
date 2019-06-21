@@ -1,19 +1,17 @@
-from math import sqrt, abs
+from math import sqrt, radians
 from env_youbot import environment
 import logz
 from images_to_video import im_to_vid
+import os
 
-class youBot_controller(environemnt):
+class youBot_controller(environment):
     def __init__(self):
-        if not(os.path.exists('demonstrations')):
-            os.makedirs('demonstrations')
-        imtovid = im_to_vid('demonstrations')
         super().__init__(manipulator=False, base=True, obs_lowdim=True, rpa=1)
         # vehicle_ref = pr.get_dummy('youBot_vehicleReference')
         # vehicle_target = pr.get_dummy('youBot_vehicleTargetPosition')
         self.manipulator = False
-        self.paramP = 20
-        self.paramO = 10
+        self.paramP = 25
+        self.paramO = 5
         self.previousForwBackVel=0
         self.previousLeftRightVel=0
         self.previousRotVel=0
@@ -41,58 +39,59 @@ class youBot_controller(environemnt):
             if arm_status == True and a==0:
                 a=1
                 path = self.arm_actuation()
-            if path is None:
-                print('NO PATH')
-                break
-            else:
+                if path is None:
+                    print('NO PATH')
+                    break
+
+            if arm_status == True:
                 done = path.step()
         return action_base, done, img_all
 
     def base_actuation(self):
         # This method is run at each simulation step
-        pos_v = self.target.get_position(relative_to=vehicle_ref)
-        or_v = self.target.get_orientation(relative_to=vehicle_ref)
+        pos_v = self.target.get_position(relative_to=self.base_ref)
+        or_v = self.target.get_orientation(relative_to=self.base_ref)
 
         if sqrt(pos_v[0]**2 + pos_v[1]**2) < 0.35:
             return [0, 0, 0], True
 
-        ForwBackVel = pos_v[1] * paramP
-        LeftRightVel = pos_v[0] * paramP
-        RotVel = or_v[2] * param0
-        v = math.sqrt(ForwBackVel*LeftRightVel+LeftRightVel*LeftRightVel)
+        ForwBackVel = pos_v[1] * self.paramP
+        LeftRightVel = pos_v[0] * self.paramP
+        RotVel = or_v[2] * self.paramO
+        v = sqrt(ForwBackVel*ForwBackVel+LeftRightVel*LeftRightVel)
         if v>self.maxV:
             ForwBackVel = ForwBackVel*self.maxV/v
             LeftRightVel = LeftRightVel*self.maxV/v
 
-        if (math.abs(rotVel)>maxVRot):
-            rotVel=maxVRot*rotVel/math.abs(rotVel)
+        if (abs(RotVel)>self.maxVRot):
+            RotVel=self.maxVRot*RotVel/abs(RotVel)
 
         df = ForwBackVel- self.previousForwBackVel
         ds = LeftRightVel - self.previousLeftRightVel
         dr = RotVel - self.previousRotVel
 
-        if (math.abs(df)>maxV*self.accelF):
-            df=math.abs(df)*(maxV*self.accelF)/df
+        if (abs(df)>self.maxV*self.accelF):
+            df=abs(df)*(self.maxV*self.accelF)/df
 
-        if (math.abs(ds)>maxV*self.accelF):
-            ds=math.abs(ds)*(maxV*self.accelF)/ds
+        if (abs(ds)>self.maxV*self.accelF):
+            ds=abs(ds)*(self.maxV*self.accelF)/ds
 
-        if (math.abs(dr)>maxVRot*self.accelF):
-            dr=math.abs(dr)*(maxVRot*self.accelF)/dr
+        if (abs(dr)>self.maxVRot*self.accelF):
+            dr=abs(dr)*(self.maxVRot*self.accelF)/dr
 
 
-        forwBackVel = self.previousForwBackVel+df
-        leftRightVel = self.previousLeftRightVel+ds
-        rotVel = self.previousRotVel+dr
+        ForwBackVel = self.previousForwBackVel+df
+        LeftRightVel = self.previousLeftRightVel+ds
+        RotVel = self.previousRotVel+dr
 
-        self.previousForwBackVel = forwBackVel
-        self.previousLeftRightVel = leftRightVel
-        self.previousRotVel = rotVel
+        self.previousForwBackVel = ForwBackVel
+        self.previousLeftRightVel = LeftRightVel
+        self.previousRotVel = RotVel
 
-        return [forwBackVel, leftRightVel, rotVel], False
+        return [ForwBackVel, LeftRightVel, RotVel], False
 
     def arm_actuation(self):
-        path = self.arm.get_path(position=self.target.get_position(), orientation=[0, math.radians(180), 0])
+        path = self.arm.get_path(position=self.target.get_position(), orientation=[0, radians(180), 0])
         return path
 
     def generate_transitions(self, ep, obs_low=True, reward=False):
@@ -105,12 +104,18 @@ class youBot_controller(environemnt):
                     break
 
 def main():
+    if not(os.path.exists('demonstrations')):
+        os.makedirs('demonstrations')
+    imtovid = im_to_vid('demonstrations')
+    controller = youBot_controller()
     for ep in range(10):
-        controller = youBot_controller()
-        controller.get_action_to_target()
+        controller.reset()
+        _,_,img_all = controller.get_action_to_target()
         home = os.path.expanduser('~')
-        os.chdir(join(home,'robotics_drl/reacher'))
+        os.chdir(os.path.join(home,'robotics_drl/reacher'))
         imtovid.from_list(img_all,ep)
+
+    controller.terminate()
 
 if __name__ == "__main__":
     main()

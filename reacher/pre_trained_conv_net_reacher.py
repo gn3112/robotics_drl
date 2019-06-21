@@ -21,7 +21,7 @@ class CoordConv2d(nn.Module):
   def __init__(self, in_channels, out_channels, kernel_size, height, width, stride=1, padding=0, dilation=1, groups=1, bias=True, padding_mode='zeros'):
     super().__init__()
     self.height, self.width = height, width
-    self.conv = nn.Conv2d(in_channels + 2, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, padding_mode=padding_mode)
+    self.conv = nn.Conv2d(in_channels + 2, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias)
     x_grid, y_grid = torch.meshgrid(torch.linspace(-1, 1, width), torch.linspace(-1, 1, height))
     self.register_buffer('coordinates', torch.stack([x_grid, y_grid]).unsqueeze(dim=0))
 
@@ -32,24 +32,23 @@ class CoordConv2d(nn.Module):
 class network(nn.Module):
     def __init__(self):
         super().__init__()
-        self.conv1 = nn.CoordConv2d(4,16,4,64,64, stride=2)
-        self.conv2 = nn.Conv2d(16,32,kernel_size=4, stride=2)
-        self.conv3 = nn.Conv2d(32,32,kernel_size=4, stride=2)
+        self.conv1 = CoordConv2d(4,16,4,64,64, stride=3)
+        self.conv2 = nn.Conv2d(16,32,kernel_size=4, stride=3)
+        self.conv3 = nn.Conv2d(32,32,kernel_size=4, stride=3)
 
-        def conv2d_size_out(size, kernel_size = 4, stride = 2):
+        def conv2d_size_out(size, kernel_size = 4, stride = 3):
             return (size - (kernel_size - 1) - 1) // stride + 1
 
         conv_h = conv2d_size_out(conv2d_size_out(conv2d_size_out(64)))
         conv_w = conv2d_size_out(conv2d_size_out(conv2d_size_out(64)))
 
-        self.fc1 = nn.Linear(conv_h*conv_w*32,512)
-        self.fc2 = nn.Linear(512,6)
+        self.fc1 = nn.Linear(conv_h*conv_w*32,256)
+        self.fc2 = nn.Linear(256,6)
 
     def forward(self, state):
         x = F.relu((self.conv1(state.view(-1,4,64,64))))
         x = F.relu((self.conv2(x)))
         x = F.relu((self.conv3(x)))
-        print(x)
         x = F.relu(self.fc1(x.view(x.size(0),-1)))
         x = (self.fc2(x))
         joint_pos, target_pos, joint_vel = x.view(-1,6).chunk(3,dim=1)
@@ -81,11 +80,11 @@ def get_loss(D,BATCH_SIZE,net):
     return loss
 
 def main():
-    DATASET_SIZE = 200
-    STEPS = 3000
-    VALIDSET_SIZE = 64
-    LR = 0.7
-    BATCH_SIZE = 64
+    DATASET_SIZE = 50000
+    STEPS = 600000
+    VALIDSET_SIZE = 5000
+    LR = 0.001
+    BATCH_SIZE = 128
 
     if not(os.path.exists('data/pre_trained_model')):
                 os.makedirs('data/pre_trained_model')
@@ -130,7 +129,7 @@ def main():
             loss.backward()
             optimiser.step()
 
-            if step % 600 == 0 and step != 0:
+            if step % 800 == 0 and step != 0:
                 net.eval()
                 loss_v = get_loss(V,VALIDSET_SIZE,net)
                 pbar.set_description('Loss training: %s | Loss validation: %s' %(loss.item(), loss_v.item()))

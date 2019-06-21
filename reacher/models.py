@@ -3,6 +3,8 @@ import torch
 from torch import nn
 from torch.distributions import Distribution, Normal
 import torch.nn.functional as F
+import os
+import torchvision
 
 class Actor(nn.Module):
   def __init__(self, hidden_size, stochastic=True, layer_norm=False):
@@ -71,15 +73,17 @@ class SoftActor(nn.Module):
 
   def forward(self, state):
     if len(self.obs_space) > 1:
+        #torchvision.utils.save_image(state.view(4,64,64)[0,:,:],"sac_image_network.png",normalize=True)
         x = F.relu((self.conv1(state.view(-1,4,64,64))))
         x = F.relu((self.conv2(x)))
         x = F.relu((self.conv3(x)))
         x = F.relu(self.fc1(x.view(x.size(0),-1)))
-        x = F.relu(self.fc2(x))
+        x = (self.fc2(x))
+        print(x[:,1].min().item(),x[:,1].max().item(),x[:,1].mean().item())
         policy_mean, policy_log_std = x.view(-1,self.action_space*2).chunk(2,dim=1)
     else:
         policy_mean, policy_log_std = self.policy(state).view(-1,self.action_space*2).chunk(2,dim=1)
-
+    
     policy_log_std = torch.clamp(policy_log_std, min=self.log_std_min, max=self.log_std_max)
     policy = TanhNormal(policy_mean, policy_log_std.exp())
 
@@ -120,7 +124,7 @@ class Critic(nn.Module):
         else:
             x = F.relu(self.fc1(x.view(x.size(0),-1)))
 
-        value = F.relu(self.fc2(x))
+        value = (self.fc2(x))
 
     else:
         if self.state_action:

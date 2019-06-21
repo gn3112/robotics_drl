@@ -14,6 +14,7 @@ import os
 import numpy as np
 from drl_evaluation import evaluation_sac
 import matplotlib
+import torchvision
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -84,7 +85,6 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
               # Observe state s and select action a ~ μ(a|s)
               # action = actor(state).sample()
               action = actor(state).sample().float().to(device)
-
             # Execute a in the environment and observe next state s', reward r, and done signal d to indicate whether s' is terminal
             next_state, reward, done = env.step(action.squeeze(dim=0).cpu())#.long
             next_state = resize(next_state).float().to(device)
@@ -140,7 +140,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 next_actions, next_log_prob = next_policy.rsample_log_prob()
                 target_qs = torch.min(target_critic_1(batch['next_state'], next_actions), target_critic_2(batch['next_state'], next_actions)) - alpha * next_log_prob
                 y_q = batch['reward'] + DISCOUNT * (1 - batch['done']) * target_qs.detach()
-
+            
             q_loss = (critic_1(batch['state'], batch['action']) - y_q).pow(2).mean() + (critic_2(batch['state'], batch['action']) - y_q).pow(2).mean()
 
             critics_optimiser.zero_grad()
@@ -157,8 +157,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
             # Update policy by one step of gradient ascent
             new_qs = torch.min(critic_1(batch["state"], action),critic_2(batch["state"], action))
-            policy_loss = (weighted_sample_entropy - new_qs).mean().to(device)
-
+            policy_loss = (weighted_sample_entropy.view(-1) - new_qs).mean().to(device)
             actor_optimiser.zero_grad()
             policy_loss.backward()
             actor_optimiser.step()
@@ -193,7 +192,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 logz.log_tabular('Value-network loss', v_loss.detach().cpu().numpy())
             logz.log_tabular('Policy-network loss', policy_loss.detach().cpu().numpy())
             logz.log_tabular('Alpha loss',alpha_loss.detach().cpu().numpy())
-            logz.log_tabular('Log Pi',log_pi.mean().detach().cpu().numpy())
+            logz.log_tabular('Alpha',alpha.detach().cpu().numpy())
             logz.dump_tabular()
 
             logz.save_pytorch_model(actor.state_dict())
