@@ -35,7 +35,7 @@ def weights_init(m):
     if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Linear):
         torch.nn.init.xavier_uniform(m.weight.data)
 
-def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_STEPS, POLYAK_FACTOR, REPLAY_SIZE, TEST_INTERVAL, UPDATE_INTERVAL, UPDATE_START, ENV, OBSERVATION_LOW, VALUE_FNC, logdir):
+def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_STEPS, POLYAK_FACTOR, REPLAY_SIZE, TEST_INTERVAL, UPDATE_INTERVAL, UPDATE_START, ENV, OBSERVATION_LOW, VALUE_FNC, FLOW_TYPE, FLOWS, logdir):
     setup_logger(logdir, locals())
     ENV = __import__(ENV)
     env = ENV.environment(obs_lowdim=OBSERVATION_LOW)
@@ -43,18 +43,8 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     action_space = env.action_space()
     obs_space = env.observation_space()
     step_limit = env.step_limit()
-    if OBSERVATION_LOW:
-        def resize(a):
-            return torch.tensor(a)
-    else:
-        def resize(a):
-            # resize = T.Compose([T.ToPILImage(),
-            #                     T.Grayscale(num_output_channels=1),
-            #                     T.Resize(obs_space[0], interpolation=Image.BILINEAR),
-            #                     T.ToTensor()])
-            return a
 
-    actor = SoftActor(HIDDEN_SIZE, action_space, obs_space).float().to(device)
+    actor = SoftActor(HIDDEN_SIZE, action_space, obs_space, flow_type=FLOW_TYPE, flows=FLOWS).float().to(device)
     critic_1 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True).float().to(device)
     critic_2 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True).float().to(device)
     actor.apply(weights_init)
@@ -71,7 +61,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     critics_optimiser = optim.Adam(list(critic_1.parameters()) + list(critic_2.parameters()), lr=LEARNING_RATE)
     D = deque(maxlen=REPLAY_SIZE)
 
-    eval_ = evaluation_sac(env,logdir,device,resize)
+    eval_ = evaluation_sac(env,logdir,device)
 
     #Automatic entropy tuning init
     target_entropy = -np.prod(action_space).item()
@@ -79,7 +69,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     alpha_optimizer = optim.Adam([log_alpha], lr=LEARNING_RATE)
 
     state, done = env.reset(), False
-    state = resize(state).float().to(device)
+    state = state.float().to(device)
     #pbar = tqdm(range(1, MAX_STEPS + 1), unit_scale=1, smoothing=0)
 
     steps = 0
@@ -90,13 +80,12 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
               action = torch.tensor(env.sample_action(), dtype=torch.float32, device=device).unsqueeze(dim=0)
             else:
               # Observe state s and select action a ~ μ(a|s)
-              policy = actor(state)
-              action = policy.sample().float().to(device) 
-              #if (policy.mean).mean() > 0.4: 
+              action = actor(state, log_prob=False, deterministic=False)
+              #if (policy.mean).mean() > 0.4:
               #    print("GOOD VELOCITY")
             # Execute a in the environment and observe next state s', reward r, and done signal d to indicate whether s' is terminal
-            next_state, reward, done = env.step(action.squeeze(dim=0).cpu())#.long
-            next_state = resize(next_state).float().to(device)
+            next_state, reward, done = env.step(action.squeeze(dim=0)
+            next_state = next_state.float().to(device)
             # Store (s, a, r, s', d) in replay buffer D
             # Store (s, a, r, s', d) in replay buffer D
             D.append({'state': state.unsqueeze(dim=0), 'action': action, 'reward': torch.tensor([reward],dtype=torch.float32,device=device), 'next_state': next_state.unsqueeze(dim=0), 'done': torch.tensor([True if reward == 1 else False], dtype=torch.float32, device=device)})
@@ -107,7 +96,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             if done or steps>step_limit: #TODO: incorporate step limit in the environment
                 eval_c2 = True #TODO: multiprocess pyrep with a session for each testing and training
                 steps = 0
-                state = resize(env.reset()).float().to(device)
+                state = env.reset().float().to(device)
 
         if step > UPDATE_START and step % UPDATE_INTERVAL == 0:
             # Randomly sample a batch of transitions B = {(s, a, r, s', d)} from D
@@ -129,15 +118,15 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                      'next_state':torch.cat(state_next_batch,dim=0),
                      'done':torch.cat(done_batch,dim=0)
                      }
-            policy = actor(batch['state'])
-            action, log_pi = policy.rsample_log_prob()
+
+            action, log_prob = actor(batch['state'],log_prob=True, deterministic=False)
             #Automatic entropy tuning
-            alpha_loss = -(log_alpha.float() * (log_pi + target_entropy).float().detach()).mean()
+            alpha_loss = -(log_alpha.float() * (log_prob + target_entropy).float().detach()).mean()
             alpha_optimizer.zero_grad()
             alpha_loss.backward()
             alpha_optimizer.step()
             alpha = log_alpha.exp()
-            weighted_sample_entropy = (alpha.float() * log_pi).view(-1,1)
+            weighted_sample_entropy = (alpha.float() * log_prob).view(-1,1)
 
             # Compute targets for Q and V functions
             if VALUE_FNC:
@@ -145,11 +134,10 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 y_v = torch.min(critic_1(batch['state'], action.detach()), critic_2(batch['state'], action.detach())) - weighted_sample_entropy.detach()
             else:
                 # No value function network
-                next_policy = actor(batch['next_state'])
-                next_actions, next_log_prob = next_policy.rsample_log_prob()
+                next_actions, next_log_prob = actor(batch['next_state'],log_prob=True, deterministic=False)
                 target_qs = torch.min(target_critic_1(batch['next_state'], next_actions), target_critic_2(batch['next_state'], next_actions)) - alpha * next_log_prob
                 y_q = batch['reward'] + DISCOUNT * (1 - batch['done']) * target_qs.detach()
-            
+
             q_loss = (critic_1(batch['state'], batch['action']) - y_q).pow(2).mean() + (critic_2(batch['state'], batch['action']) - y_q).pow(2).mean()
 
             critics_optimiser.zero_grad()
@@ -232,6 +220,9 @@ def main():
     parser.add_argument('--UPDATE_INTERVAL',default=1,type=int)
     parser.add_argument('--UPDATE_START',default=10000,type=int)
     parser.add_argument('--VALUE_FNC',action='store_true')
+    parser.add_argument('--FLOW_TYPE',default='tanh',type=str)
+    parser.add_argument('--FLOWS',default=0,type=int)
+
 
     args = parser.parse_args()
     if not(os.path.exists('data')):
@@ -257,6 +248,8 @@ def main():
           args.ENV,
           args.OBSERVATION_LOW,
           args.VALUE_FNC,
+          args.FLOW_TYPE,
+          args.FLOWS,
           logdir)
 
     print("Elapsed time: ", time.time() - start_time)

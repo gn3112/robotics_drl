@@ -83,8 +83,8 @@ class environment(object):
             tip_pos = self.tip_position()
             tip_target_vec = np.array(tip_pos) - np.array(target_pos)
 
-            return np.concatenate((cos_joints, sin_joints, joints_pos, joints_vel, tip_target_vec[0:2]),axis=0)
-       
+            return torch.tensor(np.concatenate((cos_joints, sin_joints, joints_pos, joints_vel, tip_target_vec[0:2]),axis=0)).float()
+
         else:
             new_obs = resize(self.render()).view(-1,64,64)
 
@@ -94,9 +94,9 @@ class environment(object):
                 obs = self.prev_obs
                 for i in range(self.frames-1):
                     obs[i,:,:] = obs[i+1,:,:]
-                
+
                 obs[self.frames-1,:,:] = new_obs
-            
+
             self.prev_obs = obs
             return obs.view(-1,64,64)
 

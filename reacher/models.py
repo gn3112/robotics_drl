@@ -2,9 +2,40 @@ import copy
 import torch
 from torch import nn
 from torch.distributions import Distribution, Normal
+from pyro.distributions import PlanarFlow, RadialFlow
+from pyro.distributions.torch_transform import TransformModule
 import torch.nn.functional as F
 import os
 import torchvision
+
+class TanhFlow(TransformModule):
+  def __init__(self, size):
+    super().__init__()
+
+  def _call(self, x):
+    return torch.tanh(x)
+
+  def log_abs_det_jacobian(self, x, y):
+    return torch.log1p(-y ** 2 + 1e-6).sum(dim=1)  # Uses log1p = log(1 + x) for extra numerical stability
+
+# Normalising flow code from https://github.com/acids-ircam/pytorch_flows
+class NormalisingFlow(nn.Module):
+  def __init__(self, size, num_flows, flow_type='planar'):
+    super().__init__()
+    if flow_type == 'planar':
+      flow = PlanarFlow
+    elif flow_type == 'radial':
+      flow = RadialFlow
+    elif flow_type == 'tanh':
+      flow = TanhFlow
+    self.bijectors = nn.ModuleList([flow(size) for _ in range(num_flows)])
+
+  def forward(self, x, log_p=None):
+    for bijector in self.bijectors:
+      y = bijector(x)
+      log_p = None if log_p is None else log_p - bijector.log_abs_det_jacobian(x, y)  # Calculates log probability of value using the change-of-variables technique
+      x = y
+    return x, log_p
 
 class Actor(nn.Module):
   def __init__(self, hidden_size, stochastic=True, layer_norm=False):
@@ -15,6 +46,7 @@ class Actor(nn.Module):
     self.policy = nn.Sequential(*layers)
     if stochastic:
       self.policy_log_std = nn.Parameter(torch.tensor([[0.]]))
+
 
   def forward(self, state):
     policy = self.policy(state)
@@ -49,7 +81,7 @@ class TanhNormal(Distribution):
 
 
 class SoftActor(nn.Module):
-  def __init__(self, hidden_size, action_space, obs_space):
+  def __init__(self, hidden_size, action_space, obs_space, flow_type='radial', flows=0):
     super().__init__()
     self.action_space = action_space
     self.obs_space = obs_space
@@ -71,7 +103,10 @@ class SoftActor(nn.Module):
         layers = [nn.Linear(self.obs_space[0], hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, self.action_space*2)] # nn.Softmax(dim=0))
         self.policy = nn.Sequential(*layers)
 
-  def forward(self, state):
+    flows, flow_type = (1, 'tanh') if flows == 0 else (flows, flow_type)
+    self.flows = NormalisingFlow(action_size, flows, flow_type=flow_type)
+
+  def forward(self, state, log_prob=False, deterministic=False):
     if len(self.obs_space) > 1:
         #torchvision.utils.save_image(state.view(4,64,64)[0,:,:],"sac_image_network.png",normalize=True)
         x = F.relu((self.conv1(state.view(-1,4,64,64))))
@@ -82,11 +117,13 @@ class SoftActor(nn.Module):
         policy_mean, policy_log_std = x.view(-1,self.action_space*2).chunk(2,dim=1)
     else:
         policy_mean, policy_log_std = self.policy(state).view(-1,self.action_space*2).chunk(2,dim=1)
-    
-    policy_log_std = torch.clamp(policy_log_std, min=self.log_std_min, max=self.log_std_max)
-    policy = TanhNormal(policy_mean, policy_log_std.exp())
 
-    return policy
+    policy_log_std = torch.clamp(policy_log_std, min=self.log_std_min, max=self.log_std_max)
+    base_distribution = Normal(policy_mean, policy_log_std_dev.exp())
+    action = base_distribution.mean if deterministic else base_distribution.rsample()
+    log_p = base_distribution.log_prob(action).sum(dim=1) if log_prob else None
+    action, log_p = self.flows(action, log_p)
+    return action, log_p
 
 class Critic(nn.Module):
   def __init__(self, hidden_size, output_size, obs_space, action_space, state_action=False, layer_norm=False):
