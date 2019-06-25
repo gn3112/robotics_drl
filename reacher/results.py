@@ -56,6 +56,9 @@ class results(object):
                 data = data_all.loc[idx]
                 training_steps = np.array(data["Training steps"].values, dtype=np.float64)
                 mean = np.array(data["Validation return"].values, dtype=np.float64)
+                mean_min = np.min(mean)
+                mean_max = np.max(mean)
+                mean = (mean - mean_min)/(mean_max - mean_min)
                 std = np.array(data["Validation return std"].values, dtype=np.float64)
                 ax.plot(training_steps, mean, label=self.label[i] ,c=clrs[i])
                 ax.fill_between(training_steps, mean-std, mean+std, alpha=0.3, facecolor=clrs[i])
