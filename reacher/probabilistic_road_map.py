@@ -14,9 +14,9 @@ import matplotlib.pyplot as plt
 import time
 
 # parameter
-N_SAMPLE = 1000  # number of sample_points
+N_SAMPLE = 800  # number of sample_points
 N_KNN = 10  # number of edge from one sampled point
-MAX_EDGE_LEN = 0.5  # [m] Maximum edge length
+MAX_EDGE_LEN = 0.2  # [m] Maximum edge length
 
 show_animation = False
 
@@ -186,7 +186,6 @@ def dijkstra_planning(sx, sy, gx, gy, ox, oy, rr, road_map, sample_x, sample_y):
 
     while True:
         if not openset:
-            print("Cannot find path")
             path_found = False
             break
 
@@ -199,7 +198,6 @@ def dijkstra_planning(sx, sy, gx, gy, ox, oy, rr, road_map, sample_x, sample_y):
             plt.pause(0.001)
 
         if c_id == (len(road_map) - 1):
-            print("goal is found!")
             ngoal.pind = current.pind
             ngoal.cost = current.cost
             break
