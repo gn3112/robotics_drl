@@ -80,11 +80,11 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
               action = torch.tensor(env.sample_action(), dtype=torch.float32, device=device).unsqueeze(dim=0)
             else:
               # Observe state s and select action a ~ μ(a|s)
-              action = actor(state, log_prob=False, deterministic=False)
+              action, _ = actor(state, log_prob=False, deterministic=False)
               #if (policy.mean).mean() > 0.4:
               #    print("GOOD VELOCITY")
             # Execute a in the environment and observe next state s', reward r, and done signal d to indicate whether s' is terminal
-            next_state, reward, done = env.step(action.squeeze(dim=0)
+            next_state, reward, done = env.step(action.squeeze(dim=0))
             next_state = next_state.float().to(device)
             # Store (s, a, r, s', d) in replay buffer D
             # Store (s, a, r, s', d) in replay buffer D
