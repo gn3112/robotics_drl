@@ -104,7 +104,7 @@ class SoftActor(nn.Module):
         self.policy = nn.Sequential(*layers)
 
     flows, flow_type = (1, 'tanh') if flows == 0 else (flows, flow_type)
-    self.flows = NormalisingFlow(action_size, flows, flow_type=flow_type)
+    self.flows = NormalisingFlow(self.action_space, flows, flow_type=flow_type)
 
   def forward(self, state, log_prob=False, deterministic=False):
     if len(self.obs_space) > 1:
@@ -119,7 +119,7 @@ class SoftActor(nn.Module):
         policy_mean, policy_log_std = self.policy(state).view(-1,self.action_space*2).chunk(2,dim=1)
 
     policy_log_std = torch.clamp(policy_log_std, min=self.log_std_min, max=self.log_std_max)
-    base_distribution = Normal(policy_mean, policy_log_std_dev.exp())
+    base_distribution = Normal(policy_mean, policy_log_std.exp())
     action = base_distribution.mean if deterministic else base_distribution.rsample()
     log_p = base_distribution.log_prob(action).sum(dim=1) if log_prob else None
     action, log_p = self.flows(action, log_p)
