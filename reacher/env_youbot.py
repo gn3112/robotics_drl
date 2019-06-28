@@ -1,5 +1,10 @@
 from pyrep import PyRep
-from pyrep.robots.arms import youBot
+from pyrep.robots.arms.youBot import youBot
+from pyrep.objects.shape import Shape
+from pyrep.objects.joint import Joint
+from pyrep.objects.object import Object
+from pyrep.objects.vision_sensor import VisionSensor
+from pyrep.objects.dummy import Dummy
 from math import pi, sqrt
 import random
 import numpy as np
@@ -11,29 +16,29 @@ class environment(object):
     def __init__(self, manipulator=False, base=True, obs_lowdim=True, rpa=6):
         self.pr = PyRep()
         SCENE_FILE = join(dirname(abspath(__file__)), 'youbot.ttt')
-        self.pr.launch(SCENE_FILE,headless=True)
+        self.pr.launch(SCENE_FILE,headless=False)
         self.pr.start()
         time.sleep(0.1)
 
-        self.arm = self.pr.get_arm(youBot)
+        self.arm = youBot()
         self.arm_start_pos = self.arm.get_joint_positions()
 
         self.wheel = []
         self.slipping = []
         for lr in ['fl','rl','rr','fr']:
-            self.wheel.append(self.pr.get_object('wheel_respondable_%s'%lr))
-            self.slipping.append(self.pr.get_object('slippingJoint_%s'%lr))
+            self.wheel.append(Shape('wheel_respondable_%s'%lr))
+            self.slipping.append(Joint('slippingJoint_%s'%lr))
 
-        self.target = self.pr.get_object('target')
-        self.base_ref = self.pr.get_dummy('youBot_ref')
-        self.tip = self.pr.get_dummy('youBot_tip')
-        self.youBot = self.pr.get_object('youBot')
-        self.camera = self.pr.get_vision_sensor('Vision_sensor')   
+        self.target = Shape('target')
+        self.base_ref = Dummy('youBot_ref')
+        self.tip = Dummy('youBot_tip')
+        self.youBot = Shape('youBot')
+        self.camera = VisionSensor('Vision_sensor')   
 
         self.wheel_joint_handle = []
         joint_name = ['rollingJoint_fl','rollingJoint_rl','rollingJoint_rr','rollingJoint_fr']
         for joint in joint_name:
-            self.wheel_joint_handle.append(self.pr.get_joint(joint))
+            self.wheel_joint_handle.append(Joint(joint))
 
 
         self.manipulator = manipulator
