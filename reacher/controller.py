@@ -1,4 +1,4 @@
-from math import sqrt, radians
+from math import sqrt, radians, atan2, pi
 from pyrep.objects.dummy import Dummy
 from pyrep.objects.shape import Shape
 from pyrep.const import PrimitiveShape
@@ -8,6 +8,7 @@ import os
 from probabilistic_road_map import PRM_planning
 import numpy as np
 import time
+from transformations import compose_matrix
 
 class youBot_controller(environment):
     def __init__(self):
@@ -23,6 +24,7 @@ class youBot_controller(environment):
         self.accelF = 0.035
         self.maxV = 2
         self.maxVRot = 3
+        self.dist1 = 0.2
         self.intermediate_target = Shape.create(type=PrimitiveShape.SPHERE,
                                 size=[0.05, 0.05, 0.05],
                                 color=[1.0, 0.1, 0.1],
@@ -36,12 +38,12 @@ class youBot_controller(environment):
     # Add noise in trajectories and get different path to target and nearby
     # Store transitions, if reward function present: state, action, next_state, {reward}
     # Save in a txt file
-    
+
     def intermediate_points_base(self):
         start = self.youBot.get_position()[:2]
         goal = self.goal[0,:]
         pts = []
-        
+
         ox = []
         oy = []
         wl = 2
@@ -56,19 +58,19 @@ class youBot_controller(environment):
             oy.append(wl)
         for i in range(-wl,wl+1):
             ox.append(wl)
-            oy.append(i) 
+            oy.append(i)
         print("start",start)
         print('goal',goal)
         rx, ry = PRM_planning(start[0],start[1],goal[0],goal[1],ox,oy, 0.05) # robot size 0.05
         rxy = np.flip(np.column_stack((rx,ry)),axis=0)
         print(rxy)
         num_nodes = np.shape(rxy)[0]
-        
+
         if num_nodes < 30:
             return [rxy.tolist()[-1]]
 
         for i in range(3,num_nodes,3):
-            if i == num_nodes//3 * 3: 
+            if i == num_nodes//3 * 3:
                 pts.append(rxy[-1,:])
                 continue
 
@@ -84,9 +86,9 @@ class youBot_controller(environment):
     def generate_trajectories(self):
         # Reaching with base and then with manipulator
         base_status = self.generate_base_trajectories()
-        if base_status == False: 
+        if base_status == False:
             done = self.generate_arm_trajectories()
-            return done        
+            return done
         else:
             return False
 
@@ -95,49 +97,75 @@ class youBot_controller(environment):
         while not done:
             done = path.step()
         return done
-    
+
     def generate_base_trajectories(self):
         steps = 0
         base_status = True
         inter_pts = self.intermediate_points_base()
-        i_pts = 0 
+        i_pts = 0
         while base_status != False:
             self.intermediate_target.set_position([inter_pts[i_pts][0],inter_pts[i_pts][1],0.1])
             if self.is_base_reached():
                 i_pts += 1
                 print(inter_pts[i_pts])
-            
+
             steps += 1
             time.sleep(0.01)
             action_base, base_status = self.get_base_actuation()
-            self.step(action_base) 
+            self.step(action_base)
             if steps > 300:
                 break
         return base_status
 
     def generate_arm_trajectories(self):
         path = self.get_arm_path()
-        
+
         if path is None:
             return False
-        
-        done = self.follow_path(path) 
-        
+
+        done = self.follow_path(path)
+
         return done
 
     def store_transitions(self):
         img = self.camera.capture_rgb()*256
         self.img_all.append(img)
-    
+
     def get_arm_path(self):
         path = self.arm.get_path(position=self.target.get_position(), orientation=[0, radians(180), 0])
-        return path 
-   
+        return path
+
+
+    def getBoxAdjustedMatrixAndFacingAngle():
+        p2 = self.target.get_position()
+        p1 =  self.vehicle_ref.get_position()
+        p = [p2[0]-p1[0],p2[1]-p1[1],p2[2]-p1[2]]
+        pl = sqrt(p[0]*p[0]+p[1]*p[1]+p[2]*p[2])
+        p[0]=p[0]/pl
+        p[1]=p[1]/pl
+        p[2]=p[2]/pl
+        m = self.target.get_matrix()
+        matchingScore = 0
+        for i in range(0,3,1):
+            v = [m[i],m[4+i],m[8+i]]
+            score = v[1]*p[1]+v[2]*p[2]+v[3]*p[3]
+            if abs(score)>matchingScore:
+                s=1
+                if score<0: s=-1
+                matchingScore = abs(score)
+                bestMatch = [v[1]*s,v[2]*s,v[3]*s]
+
+        angle = atan2(bestMatch[2],bestMatch[1])
+        m = compose_matrix(translate=p2,angles=[0,0,angle])
+        return m, angle - pi/2
+
     def get_base_actuation(self):
         # This method is ran at each simulation step
+        m, angle = self.getBoxAdjustedMatrixAndFacingAngle()
+        self.intermediate_target.set_position(m[4]-m[1]*self.dist1,m[8]-m[5]*self.dist1,0.1)
         pos_v = self.intermediate_target.get_position(relative_to=self.base_ref)
         or_v = self.intermediate_target.get_orientation(relative_to=self.base_ref)
-        
+
         pos_youBot = self.youBot.get_position()
         if sqrt((self.goal[0][0]-pos_youBot[0])**2 + (self.goal[0][1]-pos_youBot[1])**2) < 0.01:
             return [0, 0, 0], False
@@ -187,20 +215,20 @@ class youBot_controller(environment):
                     break
 
 def main():
-    
+
     if not(os.path.exists('data/demonstrations')):
         os.makedirs('data/demonstrations')
-    
+
     controller = youBot_controller()
-    
+
     for ep in range(5):
         controller.reset()
         target_pos = controller.target.get_position()
         youBot_pos = controller.youBot.get_position()
-        controller.goal = np.array([target_pos[:2],[0,0]]) 
+        controller.goal = np.array([target_pos[:2],[0,0]])
         done = controller.generate_base_trajectories()
         print(done)
-        
+
     controller.terminate()
 
 if __name__ == "__main__":
