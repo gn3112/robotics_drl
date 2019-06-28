@@ -28,7 +28,9 @@ class environment(object):
         self.base_ref = self.pr.get_dummy('youBot_ref')
         self.tip = self.pr.get_dummy('youBot_tip')
         self.youBot = self.pr.get_object('youBot')
-        self.camera = self.pr.get_vision_sensor('Vision_sensor')   
+        self.camera_top = self.pr.get_vision_sensor('Vision_sensor')
+        self.camera_arm = self.pr.get_vision_sensor('Vision_sensor0')
+
 
         self.wheel_joint_handle = []
         joint_name = ['rollingJoint_fl','rollingJoint_rl','rollingJoint_rr','rollingJoint_fr']
@@ -43,6 +45,10 @@ class environment(object):
         self.obs_lowdim = obs_lowdim
         self.action = [0,0,0]
         self.xy_vel = [0,0]
+
+        if self.obs_lowdim == False and base = True:
+            self.arm.set_joint_positions([])
+
 
     def reset_wheel(self):
         p = [[-pi/4,0,0],[pi/4,0,pi/4]]
@@ -63,8 +69,11 @@ class environment(object):
     def move_manipulator(self,joints_vel=[0,0,0,0,0]):
         self.arm.set_joint_target_velocities(joint_vel)
 
-    def render(self):
-        img = self.camera.capture_rgb() # (dim,dim,3)
+    def render(self,view='top'):
+        if view == 'top':
+            img = self.camera_top.capture_rgb() # (dim,dim,3)
+        elif view == 'arm':
+            img = self.camera_arm.capture_rgb()
         return img*256
 
     def get_observation_manipulator(self):
@@ -83,7 +92,7 @@ class environment(object):
             targ_vec = np.array(self.target.get_position()) - np.array(pos)
             return np.concatenate(([or_[0]], pos[0:2], self.xy_vel, self.action, targ_vec[0:2]),axis=0)
         else:
-            return None # This camera is mounted on the robot arm not the top view camera
+            return self.render(view='arm') # This camera is mounted on the robot arm not the top view camera
 
     def get_observation(self):
         if self.base and self.manipulator:
@@ -160,7 +169,7 @@ class environment(object):
         if random_:
             target_pos = self.target.get_position()
             x_L, y_L = self.rand_bound()
-            while abs(sqrt(x_L**2 + y_L**2) - sqrt(target_pos[0]**2 + target_pos[1]**2)) < 0.3:
+            while abs(sqrt(x_L**2 + y_L**2) - sqrt(target_pos[0]**2 + target_pos[1]**2)) < 0.35:
                 x_L, y_L = self.rand_bound()
             orientation = random.random()*2*pi
         else:
@@ -189,7 +198,7 @@ class environment(object):
 
     def rand_bound(self):
         xy_min = 0
-        xy_max = 1
+        xy_max = 1.2
         x = random.random()*(xy_max-xy_min) + xy_min
         y_max = sqrt(xy_max**2-x**2)
         y_min = 0
@@ -211,7 +220,12 @@ class environment(object):
         return x,y
 
     def action_space(self):
-        return 3
+        if self.base:
+            return 3
+        elif self.manipulator:
+            return 5
+        else:
+            return 8
 
     def action_type(self):
         return 'continuous'
