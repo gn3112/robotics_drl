@@ -1,10 +1,13 @@
 from math import sqrt, radians
+from pyrep.objects.dummy import Dummy
+from pyrep.objects.shape import Shape
+from pyrep.const import PrimitiveShape
 from env_youbot import environment
 import logz
-from images_to_video import im_to_vid
 import os
 from probabilistic_road_map import PRM_planning
 import numpy as np
+import time
 
 class youBot_controller(environment):
     def __init__(self):
@@ -12,17 +15,19 @@ class youBot_controller(environment):
         # vehicle_ref = pr.get_dummy('youBot_vehicleReference')
         # vehicle_target = pr.get_dummy('youBot_vehicleTargetPosition')
         self.manipulator = False
-        self.paramP = 25
-        self.paramO = 5
+        self.paramP = 20
+        self.paramO = 10
         self.previousForwBackVel=0
         self.previousLeftRightVel=0
         self.previousRotVel=0
         self.accelF = 0.035
         self.maxV = 2
         self.maxVRot = 3
-        self.camera = self.pr.get_vision_sensor('side_camera')
-        self.intermediate_target = self.pr.get_dummy('intermediate_target')
-        self.img_all = []
+        self.intermediate_target = Shape.create(type=PrimitiveShape.SPHERE,
+                                size=[0.05, 0.05, 0.05],
+                                color=[1.0, 0.1, 0.1],
+                                static=True, respondable=False)
+        #self.intermediate_target = Dummy('intermediate_target')
         #logz.configure_output_dir('demonstrations')
 
     # Individual controller for generating trajectories for the arm
@@ -59,8 +64,8 @@ class youBot_controller(environment):
         print(rxy)
         num_nodes = np.shape(rxy)[0]
         
-        if num_nodes < 4:
-            return rxy.tolist()
+        if num_nodes < 30:
+            return [rxy.tolist()[-1]]
 
         for i in range(3,num_nodes,3):
             if i == num_nodes//3 * 3: 
@@ -73,12 +78,11 @@ class youBot_controller(environment):
 
     def is_base_reached(self):
         pos_v = self.intermediate_target.get_position(relative_to=self.base_ref)
-        if sqrt(pos_v[0]**2 + pos_v[1]**2) < 0.005:
+        if sqrt(pos_v[0]**2 + pos_v[1]**2) < 0.1:
             return True
 
     def generate_trajectories(self):
         # Reaching with base and then with manipulator
-        self.img_all = []
         base_status = self.generate_base_trajectories()
         if base_status == False: 
             done = self.generate_arm_trajectories()
@@ -89,7 +93,6 @@ class youBot_controller(environment):
     def follow_path(self,path):
         done = False
         while not done:
-            self.store_transitions()
             done = path.step()
         return done
     
@@ -98,15 +101,14 @@ class youBot_controller(environment):
         base_status = True
         inter_pts = self.intermediate_points_base()
         i_pts = 0 
-        self.img_all = []
         while base_status != False:
-            self.intermediate_target.set_position([inter_pts[i_pts][0],inter_pts[i_pts][0],0.1])
-            
+            self.intermediate_target.set_position([inter_pts[i_pts][0],inter_pts[i_pts][1],0.1])
             if self.is_base_reached():
                 i_pts += 1
-
+                print(inter_pts[i_pts])
+            
             steps += 1
-            self.store_transitions()
+            time.sleep(0.01)
             action_base, base_status = self.get_base_actuation()
             self.step(action_base) 
             if steps > 300:
@@ -188,7 +190,6 @@ def main():
     
     if not(os.path.exists('data/demonstrations')):
         os.makedirs('data/demonstrations')
-    imtovid = im_to_vid('data/demonstrations')
     
     controller = youBot_controller()
     
@@ -200,15 +201,6 @@ def main():
         done = controller.generate_base_trajectories()
         print(done)
         
-        img_all = controller.img_all
-        
-        home = os.path.expanduser('~')
-        os.chdir(os.path.join(home,'robotics_drl/reacher'))
-        
-        if len(img_all) > 1: imtovid.from_list(img_all,ep)
-        
-        controller.reset()
-
     controller.terminate()
 
 if __name__ == "__main__":
