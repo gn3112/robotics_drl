@@ -16,20 +16,20 @@ class youBot_controller(environment):
         # vehicle_ref = pr.get_dummy('youBot_vehicleReference')
         # vehicle_target = pr.get_dummy('youBot_vehicleTargetPosition')
         self.manipulator = False
-        self.paramP = 20
-        self.paramO = 10
+        self.paramP = 30
+        self.paramO = 20
         self.previousForwBackVel=0
         self.previousLeftRightVel=0
         self.previousRotVel=0
         self.accelF = 0.035
-        self.maxV = 2
-        self.maxVRot = 3
+        self.maxV = 4
+        self.maxVRot = 6
         self.dist1 = 0.2
-        self.intermediate_target = Shape.create(type=PrimitiveShape.SPHERE,
-                                size=[0.05, 0.05, 0.05],
-                                color=[1.0, 0.1, 0.1],
-                                static=True, respondable=False)
-        #self.intermediate_target = Dummy('intermediate_target')
+        #self.intermediate_target = Shape.create(type=PrimitiveShape.SPHERE,
+        #                        size=[0.05, 0.05, 0.05],
+        #                        color=[1.0, 0.1, 0.1],
+        #                        static=True, respondable=False)
+        self.intermediate_target = Dummy('intermediate_target')
         #logz.configure_output_dir('demonstrations')
 
     # Individual controller for generating trajectories for the arm
@@ -101,13 +101,20 @@ class youBot_controller(environment):
     def generate_base_trajectories(self):
         steps = 0
         base_status = True
-        inter_pts = self.intermediate_points_base()
-        i_pts = 0
+        #inter_pts = self.intermediate_points_base()
+        #i_pts = 0
+        
+        m,angle = self.getBoxAdjustedMatrixAndFacingAngle()
+        
+        self.intermediate_target.set_position([m[0][3]-m[0][0]*self.dist1,m[1][3]-m[1][0]*self.dist1,0.1])
+        
+        self.intermediate_target.set_orientation([0,0,angle])
+        
         while base_status != False:
-            self.intermediate_target.set_position([inter_pts[i_pts][0],inter_pts[i_pts][1],0.1])
-            if self.is_base_reached():
-                i_pts += 1
-                print(inter_pts[i_pts])
+            #self.intermediate_target.set_position([inter_pts[i_pts][0],inter_pts[i_pts][1],0.1])
+            #if self.is_base_reached():
+                #i_pts += 1
+                #print(inter_pts[i_pts])
 
             steps += 1
             time.sleep(0.01)
@@ -115,6 +122,7 @@ class youBot_controller(environment):
             self.step(action_base)
             if steps > 300:
                 break
+        
         return base_status
 
     def generate_arm_trajectories(self):
@@ -136,9 +144,9 @@ class youBot_controller(environment):
         return path
 
 
-    def getBoxAdjustedMatrixAndFacingAngle():
+    def getBoxAdjustedMatrixAndFacingAngle(self):
         p2 = self.target.get_position()
-        p1 =  self.vehicle_ref.get_position()
+        p1 =  self.base_ref.get_position()
         p = [p2[0]-p1[0],p2[1]-p1[1],p2[2]-p1[2]]
         pl = sqrt(p[0]*p[0]+p[1]*p[1]+p[2]*p[2])
         p[0]=p[0]/pl
@@ -148,31 +156,31 @@ class youBot_controller(environment):
         matchingScore = 0
         for i in range(0,3,1):
             v = [m[i],m[4+i],m[8+i]]
-            score = v[1]*p[1]+v[2]*p[2]+v[3]*p[3]
+            score = v[0]*p[0]+v[1]*p[1]+v[2]*p[2]
             if abs(score)>matchingScore:
                 s=1
                 if score<0: s=-1
                 matchingScore = abs(score)
-                bestMatch = [v[1]*s,v[2]*s,v[3]*s]
+                bestMatch = [v[0]*s,v[1]*s,v[2]*s]
 
-        angle = atan2(bestMatch[2],bestMatch[1])
+        angle = atan2(bestMatch[1],bestMatch[0])
         m = compose_matrix(translate=p2,angles=[0,0,angle])
         return m, angle - pi/2
 
     def get_base_actuation(self):
         # This method is ran at each simulation step
-        m, angle = self.getBoxAdjustedMatrixAndFacingAngle()
-        self.intermediate_target.set_position(m[4]-m[1]*self.dist1,m[8]-m[5]*self.dist1,0.1)
+
         pos_v = self.intermediate_target.get_position(relative_to=self.base_ref)
         or_v = self.intermediate_target.get_orientation(relative_to=self.base_ref)
-
+        
         pos_youBot = self.youBot.get_position()
-        if sqrt((self.goal[0][0]-pos_youBot[0])**2 + (self.goal[0][1]-pos_youBot[1])**2) < 0.01:
+        or_target_ref = self.base_ref.get_orientation(relative_to=self.target)
+        if sqrt((self.goal[0][0]-pos_youBot[0])**2 + (self.goal[0][1]-pos_youBot[1])**2) < 0.0001 and or_target_ref < 0.1*pi/180:
             return [0, 0, 0], False
 
         ForwBackVel = pos_v[1] * self.paramP
         LeftRightVel = pos_v[0] * self.paramP
-        RotVel = or_v[2] * self.paramO
+        RotVel = - or_v[2] * self.paramO
         v = sqrt(ForwBackVel*ForwBackVel+LeftRightVel*LeftRightVel)
         if v>self.maxV:
             ForwBackVel = ForwBackVel*self.maxV/v
@@ -221,7 +229,7 @@ def main():
 
     controller = youBot_controller()
 
-    for ep in range(5):
+    for ep in range(4):
         controller.reset()
         target_pos = controller.target.get_position()
         youBot_pos = controller.youBot.get_position()
