@@ -10,7 +10,6 @@ import random
 import math
 import numpy as np
 import scipy.spatial
-import matplotlib.pyplot as plt
 import time
 
 # parameter
