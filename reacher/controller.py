@@ -12,10 +12,9 @@ from transformations import compose_matrix
 
 class youBot_controller(environment):
     def __init__(self):
-        super().__init__(manipulator=False, base=True, obs_lowdim=True, rpa=1)
+        super().__init__(manipulator=True, base=True, obs_lowdim=True, rpa=1)
         # vehicle_ref = pr.get_dummy('youBot_vehicleReference')
-        # vehicle_target = pr.get_dummy('youBot_vehicleTargetPosition')
-        self.manipulator = False
+        # vehicle_target = pr.get_dummy('youBot_vehicleTargetPosition
         self.paramP = 30
         self.paramO = 20
         self.previousForwBackVel=0
@@ -24,7 +23,7 @@ class youBot_controller(environment):
         self.accelF = 0.035
         self.maxV = 4
         self.maxVRot = 6
-        self.dist1 = 0.2
+        self.dist1 = 0.4
         #self.intermediate_target = Shape.create(type=PrimitiveShape.SPHERE,
         #                        size=[0.05, 0.05, 0.05],
         #                        color=[1.0, 0.1, 0.1],
@@ -87,6 +86,7 @@ class youBot_controller(environment):
         # Reaching with base and then with manipulator
         base_status = self.generate_base_trajectories()
         if base_status == False:
+            print("Base reached first target!")
             done = self.generate_arm_trajectories()
             return done
         else:
@@ -96,6 +96,7 @@ class youBot_controller(environment):
         done = False
         while not done:
             done = path.step()
+            self.pr.step()
         return done
 
     def generate_base_trajectories(self):
@@ -119,7 +120,8 @@ class youBot_controller(environment):
             steps += 1
             time.sleep(0.01)
             action_base, base_status = self.get_base_actuation()
-            self.step(action_base)
+            action = np.concatenate((action_base,[0,0,0,0,0]),axis=0).tolist()
+            self.step(action)
             if steps > 300:
                 break
         
@@ -129,6 +131,7 @@ class youBot_controller(environment):
         path = self.get_arm_path()
 
         if path is None:
+            print("NO PATH")
             return False
 
         done = self.follow_path(path)
@@ -140,7 +143,7 @@ class youBot_controller(environment):
         self.img_all.append(img)
 
     def get_arm_path(self):
-        path = self.arm.get_path(position=self.target.get_position(), orientation=[0, radians(180), 0])
+        path = self.arm.get_path(position=self.target.get_position(), euler=[0, radians(180), 0])
         return path
 
 
@@ -173,9 +176,9 @@ class youBot_controller(environment):
         pos_v = self.intermediate_target.get_position(relative_to=self.base_ref)
         or_v = self.intermediate_target.get_orientation(relative_to=self.base_ref)
         
-        pos_youBot = self.youBot.get_position()
-        or_target_ref = self.base_ref.get_orientation(relative_to=self.target)
-        if sqrt((self.goal[0][0]-pos_youBot[0])**2 + (self.goal[0][1]-pos_youBot[1])**2) < 0.0001 and or_target_ref < 0.1*pi/180:
+        pos_ref = self.base_ref.get_position()
+        or_target_ref = self.base_ref.get_orientation(relative_to=self.intermediate_target)
+        if sqrt((pos_v[0])**2 +(pos_v[0])**2) < 0.0001 and or_target_ref[-1] < 0.1*pi/180:
             return [0, 0, 0], False
 
         ForwBackVel = pos_v[1] * self.paramP
@@ -234,7 +237,7 @@ def main():
         target_pos = controller.target.get_position()
         youBot_pos = controller.youBot.get_position()
         controller.goal = np.array([target_pos[:2],[0,0]])
-        done = controller.generate_base_trajectories()
+        done = controller.generate_trajectories()
         print(done)
 
     controller.terminate()
