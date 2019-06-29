@@ -29,21 +29,12 @@ class environment(object):
             self.wheel.append(Shape('wheel_respondable_%s'%lr))
             self.slipping.append(Joint('slippingJoint_%s'%lr))
 
-<<<<<<< HEAD
-        self.target = self.pr.get_object('target')
-        self.base_ref = self.pr.get_dummy('youBot_ref')
-        self.tip = self.pr.get_dummy('youBot_tip')
-        self.youBot = self.pr.get_object('youBot')
-        self.camera_top = self.pr.get_vision_sensor('Vision_sensor')
-        self.camera_arm = self.pr.get_vision_sensor('Vision_sensor0')
-
-=======
         self.target = Shape('target')
         self.base_ref = Dummy('youBot_ref')
         self.tip = Dummy('youBot_tip')
         self.youBot = Shape('youBot')
         self.camera = VisionSensor('Vision_sensor')   
->>>>>>> 226556ae13bbbf9a168abc71bb9706a5b5fce96d
+        self.camera_arm = VisionSensor('Vision_sensor0')
 
         self.wheel_joint_handle = []
         joint_name = ['rollingJoint_fl','rollingJoint_rl','rollingJoint_rr','rollingJoint_fr']
@@ -59,8 +50,8 @@ class environment(object):
         self.action = [0,0,0]
         self.xy_vel = [0,0]
 
-        if self.obs_lowdim == False and base = True:
-            self.arm.set_joint_positions([])
+        if self.obs_lowdim == False and base == True:
+            self.arm.set_joint_positions([0,0,0,0.35,0])
 
 
     def reset_wheel(self):
@@ -80,7 +71,7 @@ class environment(object):
         self.wheel_joint_handle[3].set_joint_target_velocity(-forwBackVel+leftRightVel+rotVel)
 
     def move_manipulator(self,joints_vel=[0,0,0,0,0]):
-        self.arm.set_joint_target_velocities(joint_vel)
+        self.arm.set_joint_target_velocities(joints_vel)
 
     def render(self,view='top'):
         if view == 'top':
@@ -109,7 +100,7 @@ class environment(object):
 
     def get_observation(self):
         if self.base and self.manipulator:
-            return np.concatenate(self.get_observation_manipulator(), self.get_observation_base())
+            return np.concatenate((self.get_observation_manipulator(), self.get_observation_base()),axis=0)
         elif self.base:
             return self.get_observation_base()
         elif self.manipulator:
@@ -119,12 +110,12 @@ class environment(object):
         self.action = action
 
         if self.base and self.manipulator:
-            self.move_base(forwBackVel=action[0],leftRightVel=action[1],rotVel=action[2])
-            self.move_manipulator(joints_vel=action[3])
+            self.move_base(forwBackVel=action[0],leftRightVel=action[2],rotVel=action[1])
+            self.move_manipulator(joints_vel=action[3:])
         elif self.base:
-            self.move_base(forwBackVel=action[0],leftRightVel=action[1],rotVel=action[2])
+            self.move_base(forwBackVel=action[0],leftRightVel=action[2],rotVel=action[1])
         elif self.manipulator:
-            self.move_manipulator(joints_vel=action[0])
+            self.move_manipulator(joints_vel=action)
 
         for _ in range(self.rpa):
             pos_prev = self.base_ref.get_position()
