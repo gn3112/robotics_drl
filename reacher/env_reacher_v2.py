@@ -1,6 +1,11 @@
 " Define an environment and build utilities to get state, reward, action..."
 from pyrep import PyRep
-from pyrep.robots.arms import Reacher
+from pyrep.robots.arms.reacher import Reacher
+from pyrep.objects.shape import Shape
+from pyrep.objects.joint import Joint
+from pyrep.objects.object import Object
+from pyrep.objects.vision_sensor import VisionSensor
+from pyrep.objects.dummy import Dummy
 from math import sqrt, pi, exp, cos, sin
 from matplotlib import pyplot as plt
 import random
@@ -27,10 +32,10 @@ class environment(object):
         self.pr.start()
 
         self.continuous_control = continuous_control
-        self.target = self.pr.get_object('target')
-        self.tip = self.pr.get_dummy('Reacher_tip')
-        self.camera = self.pr.get_vision_sensor('Vision_sensor')
-        self.agent = self.pr.get_arm(Reacher)
+        self.target = Shape('target')
+        self.tip = Dummy('Reacher_tip')
+        self.camera = VisionSensor('Vision_sensor')
+        self.agent = Reacher()
 
         self.done = False
         self.rpa = rpa
