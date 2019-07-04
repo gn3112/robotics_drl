@@ -24,10 +24,9 @@ class youBot_controller(environment):
 
         os.chdir(self.logdir)
         self.log_file = open("log.txt","w")
-        header = ["obs" for _ in range(self.observation_space()[0])] + ["reward","done","steps","episode"]
+        header = ["obs_%s"%(i) for i in range(self.observation_space()[0])] + "next_obs_%s"%(j) for j in range(self.observation_space()[0])] + ["reward","done","steps","episode"]
         self.log_file.write('\t'.join(header))
         self.log_file.write('\n')
-
 
         if not OBS_LOW:
             if not(os.path.exists(os.path.join(self.logdir,'image_observations'))):
@@ -95,7 +94,7 @@ class youBot_controller(environment):
                     break
 
 def main():
-    DEM_N = 5
+    DEM_N = 500
     OBS_LOW = True
     ARM = False
     BASE = True
@@ -117,9 +116,11 @@ def main():
             path = controller.mobile_base.set_linear_path([target_pos[0],target_pos[1],target_or])
             action, path_done = path.step_path()
             steps += 1
-            obs, reward, done = controller.step(action)
+            next_obs, reward, done = controller.step(action)
 
-            controller.log_obs(obs.tolist() + [reward,done,steps,ep+1])
+            controller.log_obs(obs.tolist() + next_obs.tolist() + [reward,done,steps,ep+1])
+
+            obs = next_obs
 
     controller.log_file.close()
 
