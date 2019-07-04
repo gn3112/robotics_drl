@@ -5,7 +5,6 @@ from torch import optim
 from torchvision import transforms as T
 from PIL import Image
 from tqdm import tqdm
-from env_reacher_v2 import environment
 from models import Critic, SoftActor, create_target_network, update_target_network
 import logz
 import inspect
@@ -13,8 +12,8 @@ import time
 import os
 import numpy as np
 from drl_evaluation import evaluation_sac
-import matplotlib
 import torchvision
+import torch.nn.functional as F
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -70,10 +69,10 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
     state, done = env.reset(), False
     state = state.float().to(device)
-    #pbar = tqdm(range(1, MAX_STEPS + 1), unit_scale=1, smoothing=0)
+    pbar = tqdm(range(1, MAX_STEPS + 1), unit_scale=1, smoothing=0)
 
     steps = 0
-    for step in range(MAX_STEPS):
+    for step in pbar:
         with torch.no_grad():
             if step < UPDATE_START:
               # To improve exploration take actions sampled from a uniform random distribution over actions at the start of training
@@ -138,8 +137,8 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 target_qs = torch.min(target_critic_1(batch['next_state'], next_actions), target_critic_2(batch['next_state'], next_actions)) - alpha * next_log_prob
                 y_q = batch['reward'] + DISCOUNT * (1 - batch['done']) * target_qs.detach()
 
-            q_loss = (critic_1(batch['state'], batch['action']) - y_q).pow(2).mean() + (critic_2(batch['state'], batch['action']) - y_q).pow(2).mean()
-
+            # q_loss = (critic_1(batch['state'], batch['action']) - y_q).pow(2).mean() + (critic_2(batch['state'], batch['action']) - y_q).pow(2).mean()
+            q_loss = (F.mse_loss(critic_1(batch['state'], batch['action']), y_q) + F.mse_loss(critic_2(batch['state'], batch['action']), y_q)).mean()
             critics_optimiser.zero_grad()
             q_loss.backward()
             critics_optimiser.step()
