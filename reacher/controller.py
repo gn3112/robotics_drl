@@ -24,7 +24,7 @@ class youBot_controller(environment):
 
         os.chdir(self.logdir)
         self.log_file = open("log.txt","w")
-        header = ["obs_%s"%(i) for i in range(self.observation_space()[0])] + "next_obs_%s"%(j) for j in range(self.observation_space()[0])] + ["reward","done","steps","episode"]
+        header = ["obs_%s"%(i) for i in range(self.observation_space()[0])] + ["next_obs_%s"%(j) for j in range(self.observation_space()[0])] + ["reward","done","steps","episode"]
         self.log_file.write('\t'.join(header))
         self.log_file.write('\n')
 
