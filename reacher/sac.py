@@ -14,10 +14,40 @@ import numpy as np
 from drl_evaluation import evaluation_sac
 import torchvision
 import torch.nn.functional as F
+import pandas as pd
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # SAC implementation from spinning-up-basic
+def load_buffer_demonstrations(D,dir):
+    os.chdir(dir)
+    data = pd.read_csv('log.txt', sep='\t', header='infer')
+    #want to seperate by episodes and get data ordered
+    header = data.columns.values.tolist()
+
+    for i in range(len(data['steps'].values.tolist())):
+        all = data.loc[i]
+        state = []
+        action = []
+        reward = []
+        next_state = []
+        for idx,name  in enumerate(header):
+            if name[:3] == 'state'[:3]:
+                state.append(all[idx])
+            elif name[:3] == 'action'[:3]:
+                action.append(all[idx])
+            elif name[:3] == 'reward'[:3]:
+                reward.append(all[idx])
+            elif name[:3] == 'next_state'[:3]:
+                next_state.append(all[idx])
+
+        state = torch.tensor(state,dtype=torch.float32, device=device)
+        next_state = torch.tensor(state,dtype=torch.float32, device=device)
+        D.append({'state': state.unsqueeze(dim=0), 'action': action, 'reward': torch.tensor([reward],dtype=torch.float32,device=device), 'next_state': next_state.unsqueeze(dim=0), 'done': torch.tensor([True if reward == 1 else False], dtype=torch.float32, device=device)})
+
+    return D
+
+
 
 def setup_logger(logdir,locals_):
     # Configure output directory for logging
@@ -71,10 +101,16 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     state = state.float().to(device)
     pbar = tqdm(range(1, MAX_STEPS + 1), unit_scale=1, smoothing=0)
 
+    home = os.path.expanduser('~')
+    dir_dem = os.path.join(home,'robotics_drl/reacher/data/demonstrations/youbot_navig_low_demonstrations')
+    demonstration_mode = True
+    if demonstration_mode:
+        D = load_buffer_demonstrations(D,dir_dem)
+
     steps = 0
     for step in pbar:
         with torch.no_grad():
-            if step < UPDATE_START:
+            if step < UPDATE_START and demonstration_mode == False:
               # To improve exploration take actions sampled from a uniform random distribution over actions at the start of training
               action = torch.tensor(env.sample_action(), dtype=torch.float32, device=device).unsqueeze(dim=0)
             else:
@@ -83,6 +119,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
               #if (policy.mean).mean() > 0.4:
               #    print("GOOD VELOCITY")
             # Execute a in the environment and observe next state s', reward r, and done signal d to indicate whether s' is terminal
+            print(action)
             next_state, reward, done = env.step(action.squeeze(dim=0))
             next_state = next_state.float().to(device)
             # Store (s, a, r, s', d) in replay buffer D
