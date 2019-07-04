@@ -14,7 +14,7 @@ import torch
 import time
 
 class environment(object):
-    def __init__(self, manipulator=False, base=True, obs_lowdim=True, rpa=6, demonstration_mode=False):
+    def __init__(self, manipulator=False, base=True, obs_lowdim=True, rpa=1, demonstration_mode=False):
         self.pr = PyRep()
         SCENE_FILE = join(dirname(abspath(__file__)), 'youbot.ttt')
         self.pr.launch(SCENE_FILE,headless=True)
@@ -245,4 +245,4 @@ class environment(object):
         return [[-240,240],[-240,240],[-240,240]]
 
     def step_limit(self):
-        return 160
+        return 200
