@@ -26,25 +26,26 @@ def load_buffer_demonstrations(D,dir):
     header = data.columns.values.tolist()
 
     for i in range(len(data['steps'].values.tolist())):
-        all = data.loc[i]
+        all = data.loc[i].values.tolist()
         state = []
         action = []
         reward = []
         next_state = []
         for idx,name  in enumerate(header):
-            if name[:3] == 'state'[:3]:
+            if name[:3] == 'obs'[:3]:
                 state.append(all[idx])
             elif name[:3] == 'action'[:3]:
                 action.append(all[idx])
             elif name[:3] == 'reward'[:3]:
                 reward.append(all[idx])
-            elif name[:3] == 'next_state'[:3]:
+            elif name[:3] == 'next_obs'[:3]:
                 next_state.append(all[idx])
-
+    
         state = torch.tensor(state,dtype=torch.float32, device=device)
         next_state = torch.tensor(state,dtype=torch.float32, device=device)
-        D.append({'state': state.unsqueeze(dim=0), 'action': action, 'reward': torch.tensor([reward],dtype=torch.float32,device=device), 'next_state': next_state.unsqueeze(dim=0), 'done': torch.tensor([True if reward == 1 else False], dtype=torch.float32, device=device)})
-
+        action = torch.tensor(action, dtype=torch.float32, device=device)
+        D.append({'state': state.unsqueeze(dim=0), 'action': action.unsqueeze(dim=0), 'reward': torch.tensor([reward],dtype=torch.float32,device=device), 'next_state': next_state.unsqueeze(dim=0), 'done': torch.tensor([True if reward == 1 else False], dtype=torch.float32, device=device)})
+        print(action.size())
     return D
 
 
@@ -64,11 +65,10 @@ def weights_init(m):
     if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Linear):
         torch.nn.init.xavier_uniform(m.weight.data)
 
-def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_STEPS, POLYAK_FACTOR, REPLAY_SIZE, TEST_INTERVAL, UPDATE_INTERVAL, UPDATE_START, ENV, OBSERVATION_LOW, VALUE_FNC, FLOW_TYPE, FLOWS, logdir):
+def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_STEPS, POLYAK_FACTOR, REPLAY_SIZE, TEST_INTERVAL, UPDATE_INTERVAL, UPDATE_START, ENV, OBSERVATION_LOW, VALUE_FNC, FLOW_TYPE, FLOWS, DEMONSTRATIONS, logdir):
     setup_logger(logdir, locals())
     ENV = __import__(ENV)
     env = ENV.environment(obs_lowdim=OBSERVATION_LOW)
-    time.sleep(0.1)
     action_space = env.action_space()
     obs_space = env.observation_space()
     step_limit = env.step_limit()
@@ -97,33 +97,33 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     log_alpha = torch.zeros(1, requires_grad=True, device=device)
     alpha_optimizer = optim.Adam([log_alpha], lr=LEARNING_RATE)
 
+    home = os.path.expanduser('~')
+    if DEMONSTRATIONS:
+        dir_dem = os.path.join(home,'robotics_drl/reacher/data/demonstrations/',DEMONSTRATIONS)
+        D = load_buffer_demonstrations(D,dir_dem)
+
     state, done = env.reset(), False
     state = state.float().to(device)
     pbar = tqdm(range(1, MAX_STEPS + 1), unit_scale=1, smoothing=0)
 
-    home = os.path.expanduser('~')
-    dir_dem = os.path.join(home,'robotics_drl/reacher/data/demonstrations/youbot_navig_low_demonstrations')
-    demonstration_mode = True
-    if demonstration_mode:
-        D = load_buffer_demonstrations(D,dir_dem)
-
     steps = 0
     for step in pbar:
         with torch.no_grad():
-            if step < UPDATE_START and demonstration_mode == False:
+            if step < UPDATE_START and not DEMONSTRATIONS:
               # To improve exploration take actions sampled from a uniform random distribution over actions at the start of training
               action = torch.tensor(env.sample_action(), dtype=torch.float32, device=device).unsqueeze(dim=0)
             else:
               # Observe state s and select action a ~ μ(a|s)
               action, _ = actor(state, log_prob=False, deterministic=False)
+              print('actor',action.size())
               #if (policy.mean).mean() > 0.4:
               #    print("GOOD VELOCITY")
             # Execute a in the environment and observe next state s', reward r, and done signal d to indicate whether s' is terminal
-            print(action)
             next_state, reward, done = env.step(action.squeeze(dim=0))
             next_state = next_state.float().to(device)
             # Store (s, a, r, s', d) in replay buffer D
             # Store (s, a, r, s', d) in replay buffer D
+            print(state.unsqueeze(dim=0).size())
             D.append({'state': state.unsqueeze(dim=0), 'action': action, 'reward': torch.tensor([reward],dtype=torch.float32,device=device), 'next_state': next_state.unsqueeze(dim=0), 'done': torch.tensor([True if reward == 1 else False], dtype=torch.float32, device=device)})
             state = next_state
             # If s' is terminal, reset environment state
@@ -142,6 +142,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             reward_batch =  []
             state_next_batch = []
             done_batch = []
+            print('batch:',d['action'].size())
             for d in batch:
                 state_batch.append(d['state'])
                 action_batch.append(d['action'])
@@ -258,7 +259,7 @@ def main():
     parser.add_argument('--VALUE_FNC',action='store_true')
     parser.add_argument('--FLOW_TYPE',default='tanh',type=str)
     parser.add_argument('--FLOWS',default=0,type=int)
-
+    parser.add_argument('--DEMONSTRATIONS', default='',type=str)
 
     args = parser.parse_args()
     if not(os.path.exists('data')):
@@ -286,6 +287,7 @@ def main():
           args.VALUE_FNC,
           args.FLOW_TYPE,
           args.FLOWS,
+          args.DEMONSTRATIONS,
           logdir)
 
     print("Elapsed time: ", time.time() - start_time)
