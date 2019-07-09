@@ -14,9 +14,9 @@ import torch
 import time
 
 class environment(object):
-    def __init__(self, manipulator=False, base=True, obs_lowdim=True, rpa=1, demonstration_mode=False):
+    def __init__(self, manipulator=False, base=True, obs_lowdim=True, rpa=6, demonstration_mode=False):
         self.pr = PyRep()
-        SCENE_FILE = join(dirname(abspath(__file__)), 'youbot.ttt')
+        SCENE_FILE = join(dirname(abspath(__file__)), 'youbot_navig.ttt')
         self.pr.launch(SCENE_FILE,headless=True)
         self.pr.start()
 
@@ -29,6 +29,11 @@ class environment(object):
         self.mobile_base = youBot_base()
         self.base_ref = self.mobile_base.base_ref
         self.target_base = self.mobile_base.target_base
+        self.edge_fl = Dummy('edge_fl')
+        self.edge_fr = Dummy('edge_fr')
+        self.edge_rl = Dummy('edge_rl')
+        self.edge_rr = Dummy('edge_rr')
+        self.edge_all = [self.edge_fl,self.edge_fr,self.edge_rl,self.edge_rr]
 
         # Vision sensor handles
         self.camera_top = VisionSensor('Vision_sensor')
@@ -47,7 +52,12 @@ class environment(object):
 
         # Set correct orientation when camera is fixed on the arm
         if self.obs_lowdim == False and base == True:
-            self.arm.set_joint_positions([0,0,0,0.35,0])
+            self.arm.set_joint_positions([self.arm_start_pos[0],self.arm_start_pos[1]
+            ,self.arm_start_pos[2],0.35,self.arm_start_pos[4]])
+            self.arm.set_motor_locked_at_zero_velocity(1)
+            self.arm.set_joint_target_velocities([0,0,0,0,0])
+
+        # [j. for j in self.mobile_base.joints]
 
     def render(self,view='top'):
         if view == 'top':
@@ -87,7 +97,7 @@ class environment(object):
     def step(self,action):
 
         if not self.demonstration_mode:
-            self.action = action.cpu() # Change here
+            self.action = action # Change here
             # Rebound between -0.0157 and 0.0157 from -1 to 1 (tanh)
             for i in range(2): #TODO: Add option for action type
                 action[i] = action[i]*0.01# unnormalise by multiplying by 0.01 (max) for v=4rad/s
@@ -108,6 +118,7 @@ class environment(object):
 
             self.action[-1] = action[-1]/6
 
+        reward = 0
         for _ in range(self.rpa):
             pos_prev = self.mobile_base.get_base_position()
             rot_prev = self.mobile_base.get_base_orientation()
@@ -120,29 +131,42 @@ class environment(object):
 
             self.rot_vel[-1] = (rot_prev - rot_next) / 0.05
 
-        reward, done = self.get_reward()
+            vel = self.mobile_base.get_joint_velocities()
+
+            if vel[0] > 16 or vel[1] > 16 or vel[2] > 16 or vel[3] > 16:
+                print('Actual velocity too HIGH:', vel)
+                print('Target velocity: ', self.mobile_base.get_joint_target_velocities())
+
+            reward_a, done = self.get_reward()
+            reward += reward_a
+            if reward_a == 1:
+                reward = 1
+                break
+            elif done:
+                break
 
         return self.get_observation(), reward, done
 
     def get_reward(self):
         # Get the distance to target
-        target_pos = self.target_base.get_position()
-        youbot_pos = self.mobile_base.get_base_position()
-        dist_ee_target = sqrt((youbot_pos[0] - target_pos[0])**2 + \
-        (youbot_pos[1] - target_pos[1])**2)
+        target_pos = self.target_base.get_position(self.base_ref)
+        target_pos[1] = target_pos[1] - 0.3
+        # dist_ee_target = sqrt((youbot_pos[0] - target_pos[0])**2 + \
+        # (youbot_pos[1] - target_pos[1])**2)
+        dist_ee_target = sqrt(target_pos[0]**2 + target_pos[1]**2)
 
         pos_ref = self.base_ref.get_position()
         dist_from_origin = sqrt(pos_ref[0]**2 + pos_ref[1]**2)
-
         #TODO: Add reward function for the arm and generic one for both arm and base
-        if dist_ee_target < 0.35:
+        if dist_ee_target < 0.1: #0.035
             reward = 1
+            print('REACHED')
             self.done = True
-        elif dist_from_origin > 2.4: # Out of bound reward for navigation
+        elif dist_from_origin > 1: # Out of bound reward for navigation
             self.done = True
-            reward = -dist_ee_target/3
+            reward = -dist_ee_target/5
         else:
-            reward = -dist_ee_target/3
+            reward = -dist_ee_target/5
 
         return reward, self.done
 
@@ -173,14 +197,27 @@ class environment(object):
         if random_:
             target_pos = self.target_base.get_position()
             x_L, y_L = self.rand_bound()
-            while abs(sqrt(x_L**2 + y_L**2) - sqrt(target_pos[0]**2 + target_pos[1]**2)) < 0.35:
-                x_L, y_L = self.rand_bound()
+            # col = self.mobile_base.assess_collision()
+            #
+            # if col:
+            #     print("Collision detected")
             orientation = random.random()*2*pi
+
+            # edge_c = False
+            while sqrt((x_L-target_pos[0])**2 + (y_L -target_pos[1])**2) < 0.35:
+                x_L, y_L = self.rand_bound()
+
+                # for i in range(4):
+                #     x, y = self.edge_all[i].get_position()[:2]
+                #     if -1 < x < 1 or -1 < y < 1:
+                #         edge_c = True
+                #     else:
+                #         break
+
+            self.mobile_base.set_base_orientation(angle=orientation)
+            self.mobile_base.set_base_position([x_L,y_L])
         else:
             x_L, y_L = position
-
-        self.mobile_base.set_base_position([x_L,y_L])
-        self.mobile_base.set_base_orientation(angle=orientation)
 
         # Reset velocity to 0
         for _ in range(4):
@@ -206,7 +243,7 @@ class environment(object):
 
     def rand_bound(self):
         xy_min = 0
-        xy_max = 1.2
+        xy_max = 0.85
         x = random.random()*(xy_max-xy_min) + xy_min
         y_max = sqrt(xy_max**2-x**2)
         y_min = 0
