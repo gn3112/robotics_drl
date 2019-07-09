@@ -15,6 +15,7 @@ from drl_evaluation import evaluation_sac
 import torchvision
 import torch.nn.functional as F
 import pandas as pd
+from replay_buffer import PrioritizedReplayBuffer
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -40,13 +41,18 @@ def load_buffer_demonstrations(D,dir):
                 reward.append(all[idx])
             elif name[:3] == 'next_obs'[:3]:
                 next_state.append(all[idx])
-    
-        state = torch.tensor(state,dtype=torch.float32, device=device)
-        next_state = torch.tensor(state,dtype=torch.float32, device=device)
-        action = torch.tensor(action, dtype=torch.float32, device=device)
-        D.append({'state': state.unsqueeze(dim=0), 'action': action.unsqueeze(dim=0), 'reward': torch.tensor([reward],dtype=torch.float32,device=device), 'next_state': next_state.unsqueeze(dim=0), 'done': torch.tensor([True if reward == 1 else False], dtype=torch.float32, device=device)})
-        print(action.size())
-    return D
+
+        n_demonstrations = len(state)
+
+        if PRIORITIZE_REPLAY:
+            D.add(state, action, reward, next_state, done)
+        else:
+            state = torch.tensor(state,dtype=torch.float32, device=device)
+            next_state = torch.tensor(state,dtype=torch.float32, device=device)
+            action = torch.tensor(action, dtype=torch.float32, device=device)
+            D.append({'state': state.unsqueeze(dim=0), 'action': action.unsqueeze(dim=0), 'reward': torch.tensor(reward,dtype=torch.float32,device=device), 'next_state': next_state.unsqueeze(dim=0), 'done': torch.tensor([True if reward == 1 else False], dtype=torch.float32, device=device)})
+
+        return D, n_demonstrations
 
 
 
@@ -65,7 +71,18 @@ def weights_init(m):
     if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Linear):
         torch.nn.init.xavier_uniform(m.weight.data)
 
-def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_STEPS, POLYAK_FACTOR, REPLAY_SIZE, TEST_INTERVAL, UPDATE_INTERVAL, UPDATE_START, ENV, OBSERVATION_LOW, VALUE_FNC, FLOW_TYPE, FLOWS, DEMONSTRATIONS, logdir):
+def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_STEPS,
+          POLYAK_FACTOR, REPLAY_SIZE, TEST_INTERVAL, UPDATE_INTERVAL, UPDATE_START, ENV, OBSERVATION_LOW,
+          VALUE_FNC, FLOW_TYPE, FLOWS, DEMONSTRATIONS, PRIORITIZE_REPLAY, logdir):
+
+    ALPHA = 0.3
+    BETA = 1
+    epsilon = 0.01
+    epsilon_d = 0.3
+    weights = 1
+    lambda_ac = 1
+    lambda_bc = 1
+
     setup_logger(logdir, locals())
     ENV = __import__(ENV)
     env = ENV.environment(obs_lowdim=OBSERVATION_LOW)
@@ -88,7 +105,12 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
         target_critic_2 = create_target_network(critic_2)
     actor_optimiser = optim.Adam(actor.parameters(), lr=LEARNING_RATE)
     critics_optimiser = optim.Adam(list(critic_1.parameters()) + list(critic_2.parameters()), lr=LEARNING_RATE)
-    D = deque(maxlen=REPLAY_SIZE)
+
+    # Replay buffer
+    if PRIORITIZE_REPLAY:
+        D = PrioritizedReplayBuffer(REPLAY_SIZE, ALPHA)
+    else:
+        D = deque(maxlen=REPLAY_SIZE)
 
     eval_ = evaluation_sac(env,logdir,device)
 
@@ -100,7 +122,9 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     home = os.path.expanduser('~')
     if DEMONSTRATIONS:
         dir_dem = os.path.join(home,'robotics_drl/reacher/data/demonstrations/',DEMONSTRATIONS)
-        D = load_buffer_demonstrations(D,dir_dem)
+        D, n_demonstrations = load_buffer_demonstrations(D,dir_dem)
+    else:
+        n_demonstrations = 0
 
     state, done = env.reset(), False
     state = state.float().to(device)
@@ -115,16 +139,18 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             else:
               # Observe state s and select action a ~ μ(a|s)
               action, _ = actor(state, log_prob=False, deterministic=False)
-              print('actor',action.size())
               #if (policy.mean).mean() > 0.4:
               #    print("GOOD VELOCITY")
             # Execute a in the environment and observe next state s', reward r, and done signal d to indicate whether s' is terminal
-            next_state, reward, done = env.step(action.squeeze(dim=0))
+            next_state, reward, done = env.step(action.squeeze(dim=0).cpu().tolist())
             next_state = next_state.float().to(device)
             # Store (s, a, r, s', d) in replay buffer D
-            # Store (s, a, r, s', d) in replay buffer D
-            print(state.unsqueeze(dim=0).size())
-            D.append({'state': state.unsqueeze(dim=0), 'action': action, 'reward': torch.tensor([reward],dtype=torch.float32,device=device), 'next_state': next_state.unsqueeze(dim=0), 'done': torch.tensor([True if reward == 1 else False], dtype=torch.float32, device=device)})
+
+            if PRIORITIZE_REPLAY:
+                D.add(state.cpu().tolist(), action.cpu().tolist(), reward, next_state.cpu().tolist(), done)
+            else:
+                D.append({'state': state.unsqueeze(dim=0), 'action': action, 'reward': torch.tensor([reward],dtype=torch.float32,device=device), 'next_state': next_state.unsqueeze(dim=0), 'done': torch.tensor([True if reward == 1 else False], dtype=torch.float32, device=device)})
+
             state = next_state
             # If s' is terminal, reset environment state
             steps += 1
@@ -135,26 +161,38 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 state = env.reset().float().to(device)
 
         if step > UPDATE_START and step % UPDATE_INTERVAL == 0:
+
             # Randomly sample a batch of transitions B = {(s, a, r, s', d)} from D
-            batch = random.sample(D, BATCH_SIZE)
-            state_batch = []
-            action_batch = []
-            reward_batch =  []
-            state_next_batch = []
-            done_batch = []
-            print('batch:',d['action'].size())
-            for d in batch:
-                state_batch.append(d['state'])
-                action_batch.append(d['action'])
-                reward_batch.append(d['reward'])
-                state_next_batch.append(d['next_state'])
-                done_batch.append(d['done'])
-            batch = {'state':torch.cat(state_batch,dim=0),
-                     'action':torch.cat(action_batch,dim=0),
-                     'reward':torch.cat(reward_batch,dim=0),
-                     'next_state':torch.cat(state_next_batch,dim=0),
-                     'done':torch.cat(done_batch,dim=0)
-                     }
+            if PRIORITIZE_REPLAY:
+                state_batch, action_batch, reward_batch, state_next_batch, done_batch, weights_pr, idxes  = D.sample(BATCH_SIZE, BETA)
+                state_batch = torch.from_numpy(state_batch).float().to(device)
+                action_batch = torch.from_numpy(action_batch).float().to(device)
+                reward_batch = torch.from_numpy(reward_batch).float().to(device)
+                state_next_batch = torch.from_numpy(state_next_batch).float().to(device)
+                done_batch = torch.from_numpy(done_batch).float().to(device)
+                weights_pr = torch.from_numpy(weights_pr).float().to(device)
+
+                batch = {'state':state_batch,
+                         'action':action_batch,
+                         'reward':reward_batch,
+                         'next_state':state_next_batch,
+                         'done':done_batch
+                         }
+            else:
+                batch = random.sample(D, BATCH_SIZE)
+                state_batch = []
+                action_batch = []
+                reward_batch =  []
+                state_next_batch = []
+                done_batch = []
+                for d in batch:
+                    state_batch.append(d['state'])
+                    action_batch.append(d['action'])
+                    reward_batch.append(d['reward'])
+                    state_next_batch.append(d['next_state'])
+                    done_batch.append(d['done'])
+
+
 
             action, log_prob = actor(batch['state'],log_prob=True, deterministic=False)
             #Automatic entropy tuning
@@ -175,8 +213,12 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 target_qs = torch.min(target_critic_1(batch['next_state'], next_actions), target_critic_2(batch['next_state'], next_actions)) - alpha * next_log_prob
                 y_q = batch['reward'] + DISCOUNT * (1 - batch['done']) * target_qs.detach()
 
-            # q_loss = (critic_1(batch['state'], batch['action']) - y_q).pow(2).mean() + (critic_2(batch['state'], batch['action']) - y_q).pow(2).mean()
-            q_loss = (F.mse_loss(critic_1(batch['state'], batch['action']), y_q) + F.mse_loss(critic_2(batch['state'], batch['action']), y_q)).mean()
+            td_error_critic1 = critic_1(batch['state'], batch['action']) - y_q
+            td_error_critic2 = critic_2(batch['state'], batch['action']) - y_q
+            td_error = weights_pr * (td_error_critic1 + td_error_critic2).mean() # Check here print
+
+            q_loss = (td_error_critic1).pow(2).mean() + (td_error_critic2).pow(2).mean()
+            # q_loss = (F.mse_loss(critic_1(batch['state'], batch['action']), y_q) + F.mse_loss(critic_2(batch['state'], batch['action']), y_q)).mean()
             critics_optimiser.zero_grad()
             q_loss.backward()
             critics_optimiser.step()
@@ -190,8 +232,12 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 value_critic_optimiser.step()
 
             # Update policy by one step of gradient ascent
+
+            # behavior_loss = F.mse_loss(actor_action_dem - actual_action_dem).mean()
+            behavior_loss = 0
+
             new_qs = torch.min(critic_1(batch["state"], action),critic_2(batch["state"], action))
-            policy_loss = (weighted_sample_entropy.view(-1) - new_qs).mean().to(device)
+            policy_loss = lambda_ac * (weighted_sample_entropy.view(-1) - new_qs).mean().to(device) + lambda_bc * behavior_loss
             actor_optimiser.zero_grad()
             policy_loss.backward()
             actor_optimiser.step()
@@ -203,6 +249,20 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 update_target_network(critic_1, target_critic_1, POLYAK_FACTOR)
                 update_target_network(critic_2, target_critic_2, POLYAK_FACTOR)
 
+            # Compute priorities, taking demonstrations into account
+            if PRIORITIZE_REPLAY:
+                priorities = torch.abs(td_error).tolist()
+                i = 0
+                for idx in idxes:
+                    priorities[i] += epsilon
+                    if idx < n_demonstrations:
+                        priorities[i] += epsilon_d
+
+                    i += 1
+
+                D.update_priorities(idxes, priorities)
+
+        # Continues to sample transitions till episode is done and evaluation is on
         if step > UPDATE_START and step % TEST_INTERVAL == 0: eval_c = True
         else: eval_c = False
 
@@ -260,6 +320,7 @@ def main():
     parser.add_argument('--FLOW_TYPE',default='tanh',type=str)
     parser.add_argument('--FLOWS',default=0,type=int)
     parser.add_argument('--DEMONSTRATIONS', default='',type=str)
+    parser.add_argument('--PRIORITIZE_REPLAY',action='store_true')
 
     args = parser.parse_args()
     if not(os.path.exists('data')):
@@ -288,6 +349,7 @@ def main():
           args.FLOW_TYPE,
           args.FLOWS,
           args.DEMONSTRATIONS,
+          args.PRIORITIZE_REPLAY,
           logdir)
 
     print("Elapsed time: ", time.time() - start_time)
