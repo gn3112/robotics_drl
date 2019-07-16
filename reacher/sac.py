@@ -20,13 +20,14 @@ from replay_buffer import PrioritizedReplayBuffer
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # SAC implementation from spinning-up-basic
-def load_buffer_demonstrations(D,dir):
+def load_buffer_demonstrations(D,dir,PRIORITIZE_REPLAY):
     os.chdir(dir)
     data = pd.read_csv('log.txt', sep='\t', header='infer')
     #want to seperate by episodes and get data ordered
     header = data.columns.values.tolist()
+    n_demonstrations = len(data['steps'].values.tolist())
 
-    for i in range(len(data['steps'].values.tolist())):
+    for i in range(n_demonstrations):
         all = data.loc[i].values.tolist()
         state = []
         action = []
@@ -42,10 +43,8 @@ def load_buffer_demonstrations(D,dir):
             elif name[:3] == 'next_obs'[:3]:
                 next_state.append(all[idx])
 
-        n_demonstrations = len(state)
-
         if PRIORITIZE_REPLAY:
-            D.add(state, action, reward, next_state, done)
+            D.add(state, action, reward[0], next_state, True if reward == 1 else False)
         else:
             state = torch.tensor(state,dtype=torch.float32, device=device)
             next_state = torch.tensor(state,dtype=torch.float32, device=device)
@@ -73,15 +72,15 @@ def weights_init(m):
 
 def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_STEPS,
           POLYAK_FACTOR, REPLAY_SIZE, TEST_INTERVAL, UPDATE_INTERVAL, UPDATE_START, ENV, OBSERVATION_LOW,
-          VALUE_FNC, FLOW_TYPE, FLOWS, DEMONSTRATIONS, PRIORITIZE_REPLAY, logdir):
+          VALUE_FNC, FLOW_TYPE, FLOWS, DEMONSTRATIONS, PRIORITIZE_REPLAY, BEHAVIOR_CLONING, logdir):
 
     ALPHA = 0.3
     BETA = 1
     epsilon = 0.01
     epsilon_d = 0.3
     weights = 1
-    lambda_ac = 1
-    lambda_bc = 1
+    lambda_ac = 0.7
+    lambda_bc = 0.4
 
     setup_logger(logdir, locals())
     ENV = __import__(ENV)
@@ -96,6 +95,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     actor.apply(weights_init)
     critic_1.apply(weights_init)
     critic_2.apply(weights_init)
+
     if VALUE_FNC:
         value_critic = Critic(HIDDEN_SIZE, 1, obs_space, action_space).float().to(device)
         target_value_critic = create_target_network(value_critic).float().to(device)
@@ -122,9 +122,12 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     home = os.path.expanduser('~')
     if DEMONSTRATIONS:
         dir_dem = os.path.join(home,'robotics_drl/reacher/data/demonstrations/',DEMONSTRATIONS)
-        D, n_demonstrations = load_buffer_demonstrations(D,dir_dem)
+        D, n_demonstrations = load_buffer_demonstrations(D,dir_dem,PRIORITIZE_REPLAY)
     else:
         n_demonstrations = 0
+
+    if not BEHAVIOR_CLONING:
+        behavior_loss = 0
 
     state, done = env.reset(), False
     state = state.float().to(device)
@@ -144,10 +147,10 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             # Execute a in the environment and observe next state s', reward r, and done signal d to indicate whether s' is terminal
             next_state, reward, done = env.step(action.squeeze(dim=0).cpu().tolist())
             next_state = next_state.float().to(device)
-            # Store (s, a, r, s', d) in replay buffer D
 
+            # Store (s, a, r, s', d) in replay buffer D
             if PRIORITIZE_REPLAY:
-                D.add(state.cpu().tolist(), action.cpu().tolist(), reward, next_state.cpu().tolist(), done)
+                D.add(state.cpu().tolist(), action.cpu().squeeze().tolist(), reward, next_state.cpu().tolist(), done)
             else:
                 D.append({'state': state.unsqueeze(dim=0), 'action': action, 'reward': torch.tensor([reward],dtype=torch.float32,device=device), 'next_state': next_state.unsqueeze(dim=0), 'done': torch.tensor([True if reward == 1 else False], dtype=torch.float32, device=device)})
 
@@ -192,9 +195,17 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                     state_next_batch.append(d['next_state'])
                     done_batch.append(d['done'])
 
+                batch = {'state':torch.cat(state_batch,dim=0),
+                        'action':torch.cat(action_batch,dim=0),
+                        'reward':torch.cat(reward_batch,dim=0),
+                        'next_state':torch.cat(state_next_batch,dim=0),
+                        'done':torch.cat(done_batch,dim=0)
+                        }
+
 
 
             action, log_prob = actor(batch['state'],log_prob=True, deterministic=False)
+
             #Automatic entropy tuning
             alpha_loss = -(log_alpha.float() * (log_prob + target_entropy).float().detach()).mean()
             alpha_optimizer.zero_grad()
@@ -215,7 +226,28 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
             td_error_critic1 = critic_1(batch['state'], batch['action']) - y_q
             td_error_critic2 = critic_2(batch['state'], batch['action']) - y_q
-            td_error = weights_pr * (td_error_critic1 + td_error_critic2).mean() # Check here print
+
+            # Compute priorities, taking demonstrations into account
+            if PRIORITIZE_REPLAY:
+                td_error = weights_pr * (td_error_critic1 + td_error_critic2).mean()
+                behavior_loss = torch.tensor([]).to(device)
+                priorities = torch.abs(td_error).tolist()
+                i = 0
+                for idx in idxes:
+                    priorities[i] += epsilon
+                    if idx < n_demonstrations:
+                        if BEHAVIOR_CLONING:
+                            actor_action_dem = batch['action'][i]
+                            actual_action_dem, _ = actor(batch['state'][i], log_prob=False, deterministic=True)
+                            behavior_loss = torch.cat((behavior_loss,F.mse_loss(actor_action_dem, actual_action_dem.squeeze()).unsqueeze(dim=0)), dim=0)
+                        priorities[i] += epsilon_d
+                    i += 1
+                if not behavior_loss.nelement() == 0:
+                    behavior_loss = behavior_loss.mean()
+                else:
+                    behavior_loss = 0
+
+                D.update_priorities(idxes, priorities)
 
             q_loss = (td_error_critic1).pow(2).mean() + (td_error_critic2).pow(2).mean()
             # q_loss = (F.mse_loss(critic_1(batch['state'], batch['action']), y_q) + F.mse_loss(critic_2(batch['state'], batch['action']), y_q)).mean()
@@ -233,9 +265,6 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
             # Update policy by one step of gradient ascent
 
-            # behavior_loss = F.mse_loss(actor_action_dem - actual_action_dem).mean()
-            behavior_loss = 0
-
             new_qs = torch.min(critic_1(batch["state"], action),critic_2(batch["state"], action))
             policy_loss = lambda_ac * (weighted_sample_entropy.view(-1) - new_qs).mean().to(device) + lambda_bc * behavior_loss
             actor_optimiser.zero_grad()
@@ -248,19 +277,6 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             else:
                 update_target_network(critic_1, target_critic_1, POLYAK_FACTOR)
                 update_target_network(critic_2, target_critic_2, POLYAK_FACTOR)
-
-            # Compute priorities, taking demonstrations into account
-            if PRIORITIZE_REPLAY:
-                priorities = torch.abs(td_error).tolist()
-                i = 0
-                for idx in idxes:
-                    priorities[i] += epsilon
-                    if idx < n_demonstrations:
-                        priorities[i] += epsilon_d
-
-                    i += 1
-
-                D.update_priorities(idxes, priorities)
 
         # Continues to sample transitions till episode is done and evaluation is on
         if step > UPDATE_START and step % TEST_INTERVAL == 0: eval_c = True
@@ -321,6 +337,7 @@ def main():
     parser.add_argument('--FLOWS',default=0,type=int)
     parser.add_argument('--DEMONSTRATIONS', default='',type=str)
     parser.add_argument('--PRIORITIZE_REPLAY',action='store_true')
+    parser.add_argument('--BEHAVIOR_CLONING',action='store_true')
 
     args = parser.parse_args()
     if not(os.path.exists('data')):
@@ -350,6 +367,7 @@ def main():
           args.FLOWS,
           args.DEMONSTRATIONS,
           args.PRIORITIZE_REPLAY,
+          args.BEHAVIOR_CLONING,
           logdir)
 
     print("Elapsed time: ", time.time() - start_time)
