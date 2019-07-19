@@ -53,8 +53,6 @@ def load_buffer_demonstrations(D,dir,PRIORITIZE_REPLAY):
 
         return D, n_demonstrations
 
-
-
 def setup_logger(logdir,locals_):
     # Configure output directory for logging
     logz.configure_output_dir(logdir)
@@ -84,7 +82,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
     setup_logger(logdir, locals())
     ENV = __import__(ENV)
-    env = ENV.environment(obs_lowdim=OBSERVATION_LOW)
+    env = ENV.environment(obs_lowdim=OBSERVATION_LOW, manipulator=False, base=True, rpa=6, reward_dense=True, boundary=1)
     action_space = env.action_space()
     obs_space = env.observation_space()
     step_limit = env.step_limit()
@@ -201,8 +199,6 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                         'next_state':torch.cat(state_next_batch,dim=0),
                         'done':torch.cat(done_batch,dim=0)
                         }
-
-
 
             action, log_prob = actor(batch['state'],log_prob=True, deterministic=False)
 
