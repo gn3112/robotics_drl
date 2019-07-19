@@ -15,9 +15,10 @@ class results(object):
         self.n_exp = 1
         self.label = [label]
         dir_path = os.path.dirname(os.path.realpath(__file__))
-        data_path = os.path.join(dir_path,'data/%s/log.txt'%exp_dir)
+        home_dir = os.path.expanduser('~')
+        data_path = os.path.join(home_dir,'robotics_drl/reacher/data/%s/log.txt'%exp_dir)
         data = pd.read_csv(data_path, sep='\t', header='infer')
-        data = data.assign(exp="exp1")
+        data = data.assign(exp=label)
         return data
 
     def get_data_multi_exp(self,exp_dir_all,label):
@@ -27,9 +28,10 @@ class results(object):
         exp_all = []
         for exp_id in range(self.n_exp):
             dir_path = os.path.dirname(os.path.realpath(__file__))
-            data_path = os.path.join(dir_path,'data/%s/log.txt'%exp_dir_all[exp_id])
+            home_dir = os.path.expanduser('~')
+            data_path = os.path.join(home_dir,'data2/%s/log.txt'%exp_dir_all[exp_id])
             data_exp = pd.read_csv(data_path, sep='\t', header='infer')
-            data_exp = data_exp.assign(exp="exp%s"%(exp_id+1))
+            data_exp = data_exp.assign(exp=label[exp_id])
             exp_all.append(data_exp)
         data = pd.concat(exp_all)
         return data
@@ -52,14 +54,14 @@ class results(object):
 
         with sns.axes_style("darkgrid"):
             for i in range(self.n_exp):
-                idx = data_all.index[data_all['exp']=="exp%s"%str(i+1)]
+                idx = data_all.index[data_all['exp']==self.label[i]]
                 data = data_all.loc[idx]
-                training_steps = np.array(data["Training steps"].values, dtype=np.float64)
-                mean = np.array(data["Validation return"].values, dtype=np.float64)
+                training_steps = np.array(data["Training steps"].values, dtype=float)
+                mean = data["Validation return"].values
                 mean_min = np.min(mean)
                 mean_max = np.max(mean)
                 mean = (mean - mean_min)/(mean_max - mean_min)
-                std = np.array(data["Validation return std"].values, dtype=np.float64)
+                std = np.array(data["Validation return std"].values, dtype=float)
                 ax.plot(training_steps, mean, label=self.label[i] ,c=clrs[i])
                 ax.fill_between(training_steps, mean-std, mean+std, alpha=0.3, facecolor=clrs[i])
 
@@ -69,7 +71,7 @@ class results(object):
 
     def plot_all(self,data_all):
         for i in range(self.n_exp):
-            idx = data_all.index[data_all['exp']=="exp%s"%str(i+1)]
+            idx = data_all.index[data_all['exp']==self.label[i]]
             data = data_all.loc[idx]
             self.plot_return(data)
             self.plot_steps(data)
@@ -85,9 +87,9 @@ class results(object):
             with sns.axes_style("darkgrid"):
                 idx = data_all.index[data_all['exp']=="exp%s"%str(i+1)]
                 data = data_all.loc[idx]
-                training_steps = np.array(data["Training steps"].values, dtype=np.float64)
-                mean = np.array(data["Validation steps"].values, dtype=np.float64)
-                std = np.array(data["Validation steps std"].values, dtype=np.float64)
+                training_steps = np.array(data["Training steps"].values, dtype=np.float32)
+                mean = np.array(data["Validation steps"].values, dtype=np.float32)
+                std = np.array(data["Validation steps std"].values, dtype=np.float32)
                 ax.plot(training_steps, mean, label=self.label[i] ,c=clrs[i])
                 ax.fill_between(training_steps, mean-std, mean+std, alpha=0.3, facecolor=clrs[i])
         plt.xlabel('Step')
