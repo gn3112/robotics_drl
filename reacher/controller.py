@@ -10,8 +10,8 @@ import time
 import cv2
 
 class youBot_controller(environment):
-    def __init__(self, OBS_LOW, ARM, BASE, NAME):
-        super().__init__(manipulator=False, base=True, obs_lowdim=True, rpa=1, demonstration_mode=True)
+    def __init__(self, OBS_LOW, ARM, BASE, REWARD, BOUNDARY, NAME):
+        super().__init__(manipulator=ARM, base=BASE, obs_lowdim=OBS_LOW, rpa=1, reward_dense=REWARD, boundary=BOUNDARY, demonstration_mode=True)
 
         self.OBS_LOW = OBS_LOW
         self.ARM = ARM
@@ -24,7 +24,7 @@ class youBot_controller(environment):
 
         os.chdir(self.logdir)
         self.log_file = open("log.txt","w")
-        header = ["obs_%s"%(i) for i in range(self.observation_space()[0])] + ["next_obs_%s"%(j) for j in range(self.observation_space()[0])] + ["reward","done","steps","episode"]
+        header = ["obs_%s"%(i) for i in range(self.observation_space()[0])] + ["next_obs_%s"%(j) for j in range(self.observation_space()[0])] + ["action_%s"%(k) for k in range(self.action_space())] + ["reward","done","steps","episode"]
         self.log_file.write('\t'.join(header))
         self.log_file.write('\n')
 
@@ -76,51 +76,91 @@ class youBot_controller(environment):
 
         return done
 
-    def store_transitions(self):
-        img = self.camera.capture_rgb()*256
-        self.img_all.append(img)
 
-    def get_arm_path(self):
-        path = self.arm.get_path(position=self.target.get_position(), euler=[0, radians(180), 0])
-        return path
-
-    def generate_transitions(self, ep, obs_low=True, reward=False):
-        self.reset()
-        for _ in range(ep):
-            while True:
-                _, done = self.get_action_to_target()
-                if done:
-                    self.reset()
-                    break
 
 def main():
-    DEM_N = 500
-    OBS_LOW = True
-    ARM = False
-    BASE = True
-    NAME = "youbot_navig_low_demonstrations"
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--save_file', required=True, type=str)
+    parser.add_argument('--OBS_LOW', action='store_true')
+    parser.add_argument('--ARM' , action='store_true')
+    parser.add_argument('--BASE' , action='store_true')
+    parser.add_argument('--N_DEM', required=True, type=int)
+    parser.add_argument('--REWARD_DENSE', action='store_true')
+    parser.add_argument('--BOUNDARY', required=True, type=float)
+
+    args = parser.parse_args()
 
     if not(os.path.exists('data/demonstrations')):
         os.makedirs('data/demonstrations')
 
-    controller = youBot_controller(OBS_LOW, ARM, BASE, NAME)
+    controller = youBot_controller(args.OBS_LOW, args.ARM, args.BASE, args.REWARD_DENSE, args.BOUNDARY, args.save_file)
     controller.reset()
 
-    for ep in range(DEM_N):
+    for ep in range(args.N_DEM):
         obs = controller.reset().tolist()
+        time.sleep(0.1)
         steps = 0
         done = False
-        while not done:
-            target_pos = controller.target_base.get_position()[:2]
-            target_or = controller.target_base.get_orientation()[0]
-            path = controller.mobile_base.set_linear_path([target_pos[0],target_pos[1],target_or])
-            action, path_done = path.step_path()
-            steps += 1
-            next_obs, reward, done = controller.step(action)
+        path_base_done = False
 
-            controller.log_obs(obs.tolist() + next_obs.tolist() + [reward,done,steps,ep+1])
+        # Compute paths
+        target_pos = controller.target_base.get_position()
+        target_or = controller.target_base.get_orientation()[-1]
+        path_base = controller.mobile_base.get_linear_path([target_pos[0],target_pos[1]],target_or)
+
+        if path_base == None:
+            print("No path could be computed")
+            continue
+
+        while not path_base_done:
+            action_base, path_base_done = path_base.step()
+            steps += 1
+            if args.ARM:
+                action_arm = [0,0,0]
+                action = np.concatenate((action_base,action_arm),axis=0)
+            else:
+                action = action_base
+            next_obs, reward, done = controller.step(action)
+            next_obs = next_obs.tolist()
+            controller.log_obs(obs + next_obs + controller.action + [reward,done,steps,ep+1])
 
             obs = next_obs
+
+            if steps > 350:
+                print('Too many steps, start new episode')
+                args.N_DEM += 1
+                break
+
+        if args.ARM:
+            if path_base_done:
+                controller.mobile_base.set_motor_locked_at_zero_velocity(1)
+                controller.mobile_base.set_joint_target_velocities([0,0,0,0])
+
+                try:
+                    path_arm = controller.arm.get_nonlinear_path(position=target_pos,euler=[0,0,target_or])
+                except:
+                    args.N_DEM += 1
+                    continue
+
+                if path_arm == None:
+                    print("No path for the arm could be computed")
+                    continue
+
+                time.sleep(0.1)
+                path_arm_done = False
+                while not path_arm_done:
+                    action_arm, path_arm_done = [0,0,0], path_arm.step() #Action zero as computed in the environment class
+                    action_base = [0,0,0]
+                    steps += 1
+                    next_obs, reward, done = controller.step(np.concatenate((action_base,action_arm),axis=0))
+                    next_obs = next_obs.tolist()
+                    controller.log_obs(obs + next_obs + controller.action + [reward,done,steps,ep+1])
+
+                    obs = next_obs
+
+        if ep % 10 == 0 and ep != 0:
+            print("Generated 10 episodes")
 
     controller.log_file.close()
 
