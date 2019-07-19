@@ -42,7 +42,7 @@ class evaluation_sac(object):
                     if steps_ep > self.env.step_limit() - 1 or done==True:
                         if save_video==True: self.save_ep_video(img_ep)
                         steps_all.append(steps_ep)
-                        return_all.append(total_reward/steps_ep)
+                        return_all.append(total_reward)
                         break
 
         return np.array(return_all), np.array(steps_all)
