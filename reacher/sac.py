@@ -70,7 +70,7 @@ def weights_init(m):
 
 def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_STEPS,
           POLYAK_FACTOR, REPLAY_SIZE, TEST_INTERVAL, UPDATE_INTERVAL, UPDATE_START, ENV, OBSERVATION_LOW,
-          VALUE_FNC, FLOW_TYPE, FLOWS, DEMONSTRATIONS, PRIORITIZE_REPLAY, BEHAVIOR_CLONING, logdir):
+          VALUE_FNC, FLOW_TYPE, FLOWS, DEMONSTRATIONS, PRIORITIZE_REPLAY, BEHAVIOR_CLONING, ARM, BASE, RPA, REWARD_DENSE, logdir):
 
     ALPHA = 0.3
     BETA = 1
@@ -82,7 +82,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
     setup_logger(logdir, locals())
     ENV = __import__(ENV)
-    env = ENV.environment(obs_lowdim=OBSERVATION_LOW, manipulator=False, base=True, rpa=6, reward_dense=True, boundary=1)
+    env = ENV.environment(obs_lowdim=OBSERVATION_LOW, manipulator=ARM, base=BASE, rpa=RPA, reward_dense=REWARD_DENSE, boundary=1)
     action_space = env.action_space()
     obs_space = env.observation_space()
     step_limit = env.step_limit()
@@ -338,6 +338,11 @@ def main():
     parser.add_argument('--DEMONSTRATIONS', default='',type=str)
     parser.add_argument('--PRIORITIZE_REPLAY',action='store_true')
     parser.add_argument('--BEHAVIOR_CLONING',action='store_true')
+    parser.add_argument('--ARM',action='store_true')
+    parser.add_argument('--BASE',action='store_true')
+    parser.add_argument('--RPA',default=1,type=int)
+    parser.add_argument('--REWARD_DENSE',action='store_true')
+
 
     args = parser.parse_args()
     if not(os.path.exists('data')):
@@ -368,6 +373,10 @@ def main():
           args.DEMONSTRATIONS,
           args.PRIORITIZE_REPLAY,
           args.BEHAVIOR_CLONING,
+          args.ARM,
+          args.BASE,
+          args.RPA,
+          args.REWARD_DENSE,
           logdir)
 
     print("Elapsed time: ", time.time() - start_time)
