@@ -21,7 +21,7 @@ class evaluation_sac(object):
         for state_action in self.states_eval:
             with torch.no_grad():
                 state = state_action[0].float().to(self.device)
-                action = torch.tensor(state_action[1]).float().to(self.device).view(-1,self.env.action_space())
+                action = torch.tensor(state_action[1]).float().to(self.device).view(-1,self.env.action_space)
                 qvalues += (critic_1(state,action)[0] + critic_2(state,action)[0])/2
 
         return (qvalues/len(self.states_eval)).item()
