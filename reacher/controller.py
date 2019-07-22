@@ -2,16 +2,18 @@ from math import sqrt, radians, atan2, pi
 from pyrep.objects.dummy import Dummy
 from pyrep.objects.shape import Shape
 from pyrep.const import PrimitiveShape
-from env_youbot import environment
+from youBot_all import youBotAll
+from youBot_base import youBotBase
+from youBot_arm import youBotArm
 import logz
 import os
 import numpy as np
 import time
 import cv2
 
-class youBot_controller(environment):
+class youBot_controller(youBotArm):
     def __init__(self, OBS_LOW, ARM, BASE, REWARD, BOUNDARY, NAME):
-        super().__init__(manipulator=ARM, base=BASE, obs_lowdim=OBS_LOW, rpa=1, reward_dense=REWARD, boundary=BOUNDARY, demonstration_mode=True)
+        super().__init__(obs_lowdim=OBS_LOW, rpa=1, reward_dense=REWARD, demonstration_mode=True)
 
         self.OBS_LOW = OBS_LOW
         self.ARM = ARM
@@ -24,7 +26,7 @@ class youBot_controller(environment):
 
         os.chdir(self.logdir)
         self.log_file = open("log.txt","w")
-        header = ["obs_%s"%(i) for i in range(self.observation_space()[0])] + ["next_obs_%s"%(j) for j in range(self.observation_space()[0])] + ["action_%s"%(k) for k in range(self.action_space())] + ["reward","done","steps","episode"]
+        header = ["obs_%s"%(i) for i in range(self.observation_space()[0])] + ["next_obs_%s"%(j) for j in range(self.observation_space()[0])] + ["action_%s"%(k) for k in range(self.action_space)] + ["reward","done","steps","episode"]
         self.log_file.write('\t'.join(header))
         self.log_file.write('\n')
 
@@ -87,7 +89,7 @@ def main():
     parser.add_argument('--BASE' , action='store_true')
     parser.add_argument('--N_DEM', required=True, type=int)
     parser.add_argument('--REWARD_DENSE', action='store_true')
-    parser.add_argument('--BOUNDARY', required=True, type=float)
+    parser.add_argument('--BOUNDARY', default=1, type=float)
 
     args = parser.parse_args()
 
@@ -107,35 +109,43 @@ def main():
         # Compute paths
         target_pos = controller.target_base.get_position()
         target_or = controller.target_base.get_orientation()[-1]
-        path_base = controller.mobile_base.get_linear_path([target_pos[0],target_pos[1]],target_or)
+        if args.BASE:
+            path_base = controller.mobile_base.get_linear_path(target_pos,target_or)
 
-        if path_base == None:
-            print("No path could be computed")
-            continue
+            if path_base == None:
+                print("No path could be computed")
+                continue
 
-        while not path_base_done:
-            action_base, path_base_done = path_base.step()
-            steps += 1
-            if args.ARM:
-                action_arm = [0,0,0]
-                action = np.concatenate((action_base,action_arm),axis=0)
-            else:
-                action = action_base
-            next_obs, reward, done = controller.step(action)
-            next_obs = next_obs.tolist()
-            controller.log_obs(obs + next_obs + controller.action + [reward,done,steps,ep+1])
+            while True:
+                action_base, path_base_done = path_base.step()
+                steps += 1
+                if args.ARM:
+                    action_arm = [0,0,0]
+                    action = np.concatenate((action_base,action_arm),axis=0)
+                else:
+                    action = action_base
+                next_obs, reward, done = controller.step(action)
+                next_obs = next_obs.tolist()
+                controller.log_obs(obs + next_obs + controller.action + [reward,done,steps,ep+1])
 
-            obs = next_obs
+                obs = next_obs
+                if not args.ARM:
+                    if done:
+                        break
+                else:
+                    if path_base_done:
+                        break
 
-            if steps > 350:
-                print('Too many steps, start new episode')
-                args.N_DEM += 1
-                break
+                if steps > 350:
+                    print('Too many steps, start new episode')
+                    args.N_DEM += 1
+                    break
 
         if args.ARM:
-            if path_base_done:
-                controller.mobile_base.set_motor_locked_at_zero_velocity(1)
-                controller.mobile_base.set_joint_target_velocities([0,0,0,0])
+            if path_base_done or not args.BASE:
+                if args.BASE:
+                    controller.mobile_base.set_motor_locked_at_zero_velocity(1)
+                    controller.mobile_base.set_joint_target_velocities([0,0,0,0])
 
                 try:
                     path_arm = controller.arm.get_nonlinear_path(position=target_pos,euler=[0,0,target_or])
@@ -149,9 +159,10 @@ def main():
 
                 time.sleep(0.1)
                 path_arm_done = False
-                while not path_arm_done:
+                done = False
+                while not done:
                     action_arm, path_arm_done = [0,0,0], path_arm.step() #Action zero as computed in the environment class
-                    action_base = [0,0,0]
+                    action_base = [0,0,0] if args.BASE else []
                     steps += 1
                     next_obs, reward, done = controller.step(np.concatenate((action_base,action_arm),axis=0))
                     next_obs = next_obs.tolist()
