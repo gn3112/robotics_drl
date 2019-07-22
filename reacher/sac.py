@@ -82,8 +82,14 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
     setup_logger(logdir, locals())
     ENV = __import__(ENV)
-    env = ENV.environment(obs_lowdim=OBSERVATION_LOW, manipulator=ARM, base=BASE, rpa=RPA, reward_dense=REWARD_DENSE, boundary=1)
-    action_space = env.action_space()
+    if ARM and BASE:
+        env = ENV.youBotAll(obs_lowdim=OBSERVATION_LOW, rpa=RPA, reward_dense=REWARD_DENSE, boundary=1)
+    elif ARM:
+        env = ENV.youBotArm(obs_lowdim=OBSERVATION_LOW, rpa=RPA, reward_dense=REWARD_DENSE)
+    elif BASE:
+        env = ENV.youBotBase(obs_lowdim=OBSERVATION_LOW, rpa=RPA, reward_dense=REWARD_DENSE, boundary=1)
+
+    action_space = env.action_space
     obs_space = env.observation_space()
     step_limit = env.step_limit()
 
@@ -239,7 +245,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                             q_value_actor = (critic_1(batch['state'][i], batch['action'][i]) + critic_2(batch['state'][i], batch['action'][i]))/2
                             q_value_actual = (critic_1(batch['state'][i], actual_action_dem) + critic_2(batch['state'][i], actual_action_dem))/2
                             if q_value_actor > q_value_actual: # Q Filter
-                                behavior_loss = torch.cat((behavior_loss,F.mse_loss(actor_action_dem, actual_action_dem.squeeze()).unsqueeze(dim=0)), dim=0)
+                            behavior_loss = torch.cat((behavior_loss,F.mse_loss(actor_action_dem, actual_action_dem.squeeze()).unsqueeze(dim=0)), dim=0)
                         priorities[i] += epsilon_d
                     i += 1
                 if not behavior_loss.nelement() == 0:
