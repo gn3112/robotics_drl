@@ -6,7 +6,7 @@ import os
 class im_to_vid(object):
     def __init__(self,exp_dir):
         home = os.path.expanduser('~')
-        self.log_video_dir = os.path.join(home,'robotics_drl/reacher/',exp_dir,'episodes_video')
+        self.log_video_dir = os.path.join(home,'robotics_drl/',exp_dir,'episodes_video')
         if not(os.path.exists(self.log_video_dir)):
             os.makedirs(self.log_video_dir)
 

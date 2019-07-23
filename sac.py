@@ -125,7 +125,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
     home = os.path.expanduser('~')
     if DEMONSTRATIONS:
-        dir_dem = os.path.join(home,'robotics_drl/reacher/data/demonstrations/',DEMONSTRATIONS)
+        dir_dem = os.path.join(home,'robotics_drl/data/demonstrations/',DEMONSTRATIONS)
         D, n_demonstrations = load_buffer_demonstrations(D,dir_dem,PRIORITIZE_REPLAY)
     else:
         n_demonstrations = 0
@@ -245,7 +245,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                             q_value_actor = (critic_1(batch['state'][i], batch['action'][i]) + critic_2(batch['state'][i], batch['action'][i]))/2
                             q_value_actual = (critic_1(batch['state'][i], actual_action_dem) + critic_2(batch['state'][i], actual_action_dem))/2
                             if q_value_actor > q_value_actual: # Q Filter
-                            behavior_loss = torch.cat((behavior_loss,F.mse_loss(actor_action_dem, actual_action_dem.squeeze()).unsqueeze(dim=0)), dim=0)
+                                behavior_loss = torch.cat((behavior_loss,F.mse_loss(actor_action_dem, actual_action_dem.squeeze()).unsqueeze(dim=0)), dim=0)
                         priorities[i] += epsilon_d
                     i += 1
                 if not behavior_loss.nelement() == 0:

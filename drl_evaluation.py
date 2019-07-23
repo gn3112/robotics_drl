@@ -52,7 +52,7 @@ class evaluation_sac(object):
         self.imtovid.from_list(imgs,self.ep)
 
     def record_episode(self,img_all):
-        logdir = os.path.expanduser('~') + '/robotics_drl/reacher/' + self.expdir + '/episode%s'%(self.ep)
+        logdir = os.path.expanduser('~') + '/robotics_drl/' + self.expdir + '/episode%s'%(self.ep)
         if not(os.path.exists(logdir)):
             os.makedirs(logdir)
         size = 64, 64
@@ -124,7 +124,7 @@ class evaluation_dqn(object):
         self.imtovid.from_list(imgs,self.ep)
 
     def record_episode(self,img_all):
-        logdir = os.path.expanduser('~') + '/robotics_drl/reacher/' + self.expdir + '/episode%s'%(self.ep)
+        logdir = os.path.expanduser('~') + '/robotics_drl/' + self.expdir + '/episode%s'%(self.ep)
         if not(os.path.exists(logdir)):
             os.makedirs(logdir)
         size = 64, 64
