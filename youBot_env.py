@@ -34,7 +34,7 @@ class youBotEnv(object):
         return img*256
 
     def terminate(self):
-        self.pr.start()  # Stop the simulation
+        self.pr.stop()  # Stop the simulation
         self.pr.shutdown()
 
     def sample_action(self):

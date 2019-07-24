@@ -130,9 +130,8 @@ class youBotBase(youBotEnv):
                 action[i] = action[i]*0.01 #unnormalise by multiplying by 0.01 (max) for v=4rad/s
             action[2] = action[2]*6 #max v rota = 6 rad/s
             self.mobile_base.set_cartesian_position(action)
-            return self.action
         else:
             for i in range(2):
                 action[i] = (action[i] * (0.05*0.1/2)) / 0.01
             action[2] = action[2]/6
-            return action
+            self.action = action
