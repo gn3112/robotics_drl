@@ -12,7 +12,7 @@ class youBotEnv(object):
     def __init__(self, reward_dense=True, boundary=1, scene_name: str = 'youbot_navig.ttt'):
         self.pr = PyRep()
         SCENE_FILE = join(dirname(abspath(__file__)), scene_name)
-        self.pr.launch(SCENE_FILE,headless=True)
+        self.pr.launch(SCENE_FILE,headless=False)
         self.pr.start()
 
         if scene_name != 'youbot_navig.ttt':
@@ -41,12 +41,12 @@ class youBotEnv(object):
         return [(2 * random.random() - 1) for _ in range(self.action_space)]
 
     def rand_bound(self):
-        xy_min = 0
-        xy_max = self.boundary - 0.2
+        xy_min = -self.boundary
+        xy_max = self.boundary
         x = random.uniform(xy_min,xy_max)
 
         y_max = sqrt(xy_max**2-x**2)
-        y_min = 0
+        y_min = - y_max
         y = random.uniform(y_min,y_max)
 
         return x, y

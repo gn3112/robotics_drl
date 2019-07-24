@@ -16,7 +16,7 @@ class results(object):
         self.label = [label]
         dir_path = os.path.dirname(os.path.realpath(__file__))
         home_dir = os.path.expanduser('~')
-        data_path = os.path.join(home_dir,'robotics_drl/reacher/data/%s/log.txt'%exp_dir)
+        data_path = os.path.join(home_dir,'robotics_drl/data/%s/log.txt'%exp_dir)
         data = pd.read_csv(data_path, sep='\t', header='infer')
         data = data.assign(exp=label)
         return data
@@ -29,7 +29,7 @@ class results(object):
         for exp_id in range(self.n_exp):
             dir_path = os.path.dirname(os.path.realpath(__file__))
             home_dir = os.path.expanduser('~')
-            data_path = os.path.join(home_dir,'data2/%s/log.txt'%exp_dir_all[exp_id])
+            data_path = os.path.join(home_dir,'robotics_drl/data/%s/log.txt'%exp_dir_all[exp_id])
             data_exp = pd.read_csv(data_path, sep='\t', header='infer')
             data_exp = data_exp.assign(exp=label[exp_id])
             exp_all.append(data_exp)
@@ -54,8 +54,8 @@ class results(object):
 
         with sns.axes_style("darkgrid"):
             for i in range(self.n_exp):
-                idx = data_all.index[data_all['exp']==self.label[i]]
-                data = data_all.loc[idx]
+                data = data_all[data_all['exp'].str.contains(self.label[i])]
+                print(data)
                 training_steps = np.array(data["Training steps"].values, dtype=float)
                 mean = data["Validation return"].values
                 mean_min = np.min(mean)
