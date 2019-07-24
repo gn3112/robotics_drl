@@ -77,7 +77,7 @@ def save_pytorch_model(model):
     Saves the entire pytorch Module
     """
     home = expanduser("~")
-    path = home + "/robotics_drl/reacher/" + G.output_dir
+    path = home + "/robotics_drl/" + G.output_dir
     torch.save(model, osp.join(path, "model.pkl"))
 
 def dump_tabular():

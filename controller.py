@@ -11,7 +11,7 @@ import numpy as np
 import time
 import cv2
 
-class youBot_controller(youBotArm):
+class youBot_controller(youBotBase):
     def __init__(self, OBS_LOW, ARM, BASE, REWARD, BOUNDARY, NAME):
         super().__init__(obs_lowdim=OBS_LOW, rpa=1, reward_dense=REWARD, demonstration_mode=True)
 
@@ -20,7 +20,7 @@ class youBot_controller(youBotArm):
         self.BASE = BASE
 
         home = os.path.expanduser('~')
-        self.logdir = os.path.join(home,'robotics_drl/reacher/data/demonstrations',NAME)
+        self.logdir = os.path.join(home,'robotics_drl/data/demonstrations',NAME)
         if not(os.path.exists(self.logdir)):
             os.makedirs(self.logdir)
 
