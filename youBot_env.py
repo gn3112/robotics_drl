@@ -9,7 +9,7 @@ import random
 from os.path import dirname, join, abspath
 
 class youBotEnv(object):
-    def __init__(self, reward_dense=True, boundary=1, scene_name: str = 'youbot_navig.ttt'):
+    def __init__(self, scene_name, reward_dense=True, boundary=1):
         self.pr = PyRep()
         SCENE_FILE = join(dirname(abspath(__file__)), scene_name)
         self.pr.launch(SCENE_FILE,headless=False)
@@ -20,7 +20,7 @@ class youBotEnv(object):
 
         # Vision sensor handles
         self.camera_top = VisionSensor('Vision_sensor')
-        self.camera_arm = VisionSensor('Vision_sensor0')
+        self.camera_arm = VisionSensor('Vision_sensor1')
 
         self.reward_dense = reward_dense
         self.reward_termination = 1 if self.reward_dense else 0

@@ -9,8 +9,8 @@ import random
 from math import sqrt
 
 class youBotAll(youBotBase, youBotArm):
-    def __init__(self, obs_lowdim=True, rpa=6, reward_dense=True, boundary=1, demonstration_mode=False):
-        super().__init__(obs_lowdim=obs_lowdim, reward_dense=reward_dense, rpa=rpa, demonstration_mode=demonstration_mode)
+    def __init__(self, scene_name,  obs_lowdim=True, rpa=6, reward_dense=True, boundary=1, demonstration_mode=False):
+        super().__init__(scene_name, obs_lowdim=obs_lowdim, reward_dense=reward_dense, rpa=rpa, demonstration_mode=demonstration_mode)
 
         self.action_space = 6
         self.action = [0 for _ in range(self.action_space)]

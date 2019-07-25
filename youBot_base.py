@@ -6,8 +6,8 @@ from math import sqrt, pi
 import random
 
 class youBotBase(youBotEnv):
-    def __init__(self, obs_lowdim=True, rpa=6, reward_dense=True, boundary=1, demonstration_mode=False):
-        super().__init__(reward_dense)
+    def __init__(self, scene_name, obs_lowdim=True, rpa=6, reward_dense=True, boundary=1, demonstration_mode=False):
+        super().__init__(scene_name, reward_dense=reward_dense)
         # Base init and handles
         self.mobile_base = youBot_base()
         self.target_base = self.mobile_base.target_base
@@ -35,7 +35,7 @@ class youBotBase(youBotEnv):
         pos_2d = self.mobile_base.get_2d_pose()
         if self.obs_lowdim:
             targ_vec = np.array(self.target_base.get_position()[:2]) - np.array(self.mobile_base.get_2d_pose()[:2])
-            return None, torch.tensor(np.concatenate((pos_2d, self.xy_vel, self.rot_vel, targ_vec),axis=0)).float() # removed prev actions
+            return None, torch.tensor(np.concatenate((pos_2d, self.xy_vel, self.rot_vel, self.action, targ_vec),axis=0)).float() # removed prev actions
         else:
             return self.render('arm'), torch.tensor(np.concatenate((pos_2d, self.action),axis=0)).float()
 
@@ -124,14 +124,14 @@ class youBotBase(youBotEnv):
         return reward, self.done
 
     def _set_actuation(self, action):
+        scaled_action = [0,0,0]
         if not self.demonstration_mode:
-            self.action = action
             for i in range(2):
-                action[i] = action[i]*0.01 #unnormalise by multiplying by 0.01 (max) for v=4rad/s
-            action[2] = action[2]*6 #max v rota = 6 rad/s
+                scaled_action[i] = action[i]*0.01 #unnormalise by multiplying by 0.01 (max) for v=4rad/s
+            scaled_action[2] = action[2]*6 #max v rota = 6 rad/s
             self.mobile_base.set_cartesian_position(action)
         else:
             for i in range(2):
-                action[i] = (action[i] * (0.05*0.1/2)) / 0.01
-            action[2] = action[2]/6
-            self.action = action
+                scaled_action[i] = (action[i] * (0.05*0.1/2)) / 0.01
+            scaled_action[2] = action[2]/6
+            self.action = scaled_action

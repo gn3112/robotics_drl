@@ -8,8 +8,8 @@ import random
 from math import sqrt
 
 class youBotArm(youBotEnv):
-    def __init__(self, obs_lowdim=True, rpa=6, reward_dense=True, demonstration_mode=False):
-        super().__init__(reward_dense)
+    def __init__(self, scene_name, obs_lowdim=True, rpa=6, reward_dense=True, demonstration_mode=False):
+        super().__init__(scene_name, reward_dense)
 
         # Arm init and handles
         self.arm = youBot()
