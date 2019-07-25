@@ -83,11 +83,11 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     setup_logger(logdir, locals())
     ENV = __import__(ENV)
     if ARM and BASE:
-        env = ENV.youBotAll(obs_lowdim=OBSERVATION_LOW, rpa=RPA, reward_dense=REWARD_DENSE, boundary=1)
+        env = ENV.youBotAll('youbot_navig.ttt', obs_lowdim=OBSERVATION_LOW, rpa=RPA, reward_dense=REWARD_DENSE, boundary=1)
     elif ARM:
-        env = ENV.youBotArm(obs_lowdim=OBSERVATION_LOW, rpa=RPA, reward_dense=REWARD_DENSE)
+        env = ENV.youBotArm('youbot_navig.ttt', obs_lowdim=OBSERVATION_LOW, rpa=RPA, reward_dense=REWARD_DENSE)
     elif BASE:
-        env = ENV.youBotBase(obs_lowdim=OBSERVATION_LOW, rpa=RPA, reward_dense=REWARD_DENSE, boundary=1)
+        env = ENV.youBotBase('youbot_navig.ttt', obs_lowdim=OBSERVATION_LOW, rpa=RPA, reward_dense=REWARD_DENSE, boundary=1)
 
     action_space = env.action_space
     obs_space = env.observation_space()
