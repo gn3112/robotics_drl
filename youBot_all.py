@@ -20,16 +20,19 @@ class youBotAll(youBotBase, youBotArm):
             _, obsArm = youBotArm.get_observation(self)
             _, obsBase = youBotBase.get_observation(self)
             targ_vec = np.array(self.target_base.get_position()) - np.array(self.tip.get_position())
-            return None, torch.tensor(np.concatenate((obsArm[:16], obsBase[:6], targ_vec),axis=0))
+            return None, torch.tensor(np.concatenate((obsArm[:12], obsBase[:5], self.action, targ_vec),axis=0))
         else:
-            return env.render('arm'), torch.tensor(np.concatenate((obsArm[:16], obsBase[:6]),axis=0))
+            return env.render('arm'), torch.tensor(np.concatenate((obsArm[:16], obsBase[:6], self.action),axis=0))
 
     def step(self,action):
         reward = 0
+        self.action = action
         for _ in range(self.rpa):
             dem_action_base = youBotBase._set_actuation(self,action[:3])
             dem_action_arm = youBotArm._set_actuation(self,action[3:])
-            self.action = np.concatenate((dem_action_base,dem_action_arm), axis=0).tolist()
+
+            if self.demonstration_mode:
+                self.action = np.concatenate((dem_action_base, dem_action_arm), axis=0).tolist()
 
             self.prev_tip_pos = self.tip.get_position()
 
@@ -40,7 +43,7 @@ class youBotAll(youBotBase, youBotArm):
             for i in range(2):
                 self.xy_vel[i] = ((pos_2d_next[i] - pos_2d_prev[i]) / 0.05)
 
-            self.rot_vel[-1] = (pos_2d_next[-1] - pos_2d_prev[-1]) / 0.05
+            self.rot_vel[-1] = (pos_2d_prev[-1] - pos_2d_next[-1]) / 0.05
 
             reward_a, done = self._get_reward()
             reward += reward_a
@@ -60,6 +63,9 @@ class youBotAll(youBotBase, youBotArm):
         self._reset_target_position(random_=True)
         self._reset_base_position(random_=True)
         self._reset_arm(random_=False)
+        self.pr.step()
+
+        self.prev_tip_pos = np.array(self.tip.get_position())
 
         _, obs = self.get_observation()
         return obs
@@ -73,7 +79,7 @@ class youBotAll(youBotBase, youBotArm):
         pos_ref = self.mobile_base.get_2d_pose()
         dist_from_origin = sqrt(pos_ref[0]**2 + pos_ref[1]**2)
 
-        if dist_ee_target < 0.1: #0.035
+        if dist_ee_target < 0.05: #0.035
             reward = self.reward_termination
             self.done = True
         elif dist_from_origin > self.boundary: # Out of bound reward for navigation

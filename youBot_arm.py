@@ -41,12 +41,13 @@ class youBotArm(youBotEnv):
             targ_vec = np.array(self.target_base.get_position()) - np.array(self.tip.get_position())
             tip_pos = self.tip.get_position()
             tip_or = self.tip.get_orientation()
-            return None, torch.tensor(np.concatenate((arm_joint_pos, arm_joint_vel, tip_pos, tip_or, targ_vec), axis=0)).float()
+            return None, torch.tensor(np.concatenate((arm_joint_pos, arm_joint_vel, tip_pos, self.action, targ_vec), axis=0)).float() # ADD tip_or when augmenting action space
         else:
             return env.render('arm'), torch.tensor(np.concatenate((arm_joint_pos, arm_joint_vel),axis=0)).float()
 
     def step(self, action):
         reward = 0
+        self.action = action
         for _ in range(self.rpa):
             self._set_actuation(action)
             self.prev_tip_pos = self.tip.get_position()
@@ -111,7 +112,7 @@ class youBotArm(youBotEnv):
         target_rel_pos = self.target_base.get_position(self.tip)
         dist_ee_target = sqrt(target_rel_pos[0]**2 + target_rel_pos[1]**2 + target_rel_pos[2]**2)
 
-        if dist_ee_target < 0.03: #0.035
+        if dist_ee_target < 0.02:
             reward = self.reward_termination
             self.done = True
         else:
@@ -121,20 +122,18 @@ class youBotArm(youBotEnv):
 
     def _set_actuation(self, action):
         if not self.demonstration_mode:
-            self.action = action
-            action = np.array(action)*0.01 + np.array(self.prev_tip_pos)
+            scaled_action = np.array(action)*0.01 + np.array(self.prev_tip_pos)
             try:
-                joint_values_arm = self.arm.solve_ik(position=action.tolist(), euler=[0,0,1.57])
+                joint_values_arm = self.arm.solve_ik(position=scaled_action.tolist(), euler=[0,0,1.57])
                 self.arm.set_joint_target_positions(joint_values_arm)
             except:
                 pass
-
             return action
-
         else:
             tip_pos = np.array(self.tip.get_position())
-            self.action = ((tip_pos - self.prev_tip_pos)/0.01).tolist()
-            return self.action
+            scaled_action = ((tip_pos - self.prev_tip_pos)/0.01).tolist()
+            self.action = scaled_action
+            return scaled_action
 
     def step_limit(self):
         return 80
