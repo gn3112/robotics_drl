@@ -1,6 +1,6 @@
 from youBot_env import youBotEnv
 from pyrep.robots.arms.youBot import youBot
-from pyrep.robots.mobiles.youBot import youBot as youBot_base
+from pyrep.robots.mobiles.youbot import YouBot as youBot_base
 from pyrep.objects.dummy import Dummy
 import torch
 import numpy as np
@@ -8,8 +8,8 @@ import random
 from math import sqrt
 
 class youBotArm(youBotEnv):
-    def __init__(self, scene_name, obs_lowdim=True, rpa=6, reward_dense=True, demonstration_mode=False):
-        super().__init__(scene_name, reward_dense)
+    def __init__(self, scene_name, obs_lowdim=True, rpa=6, reward_dense=True, demonstration_mode=False, boundary=0):
+        super().__init__(scene_name, reward_dense, boundary)
 
         # Arm init and handles
         self.arm = youBot()

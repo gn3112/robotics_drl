@@ -2,15 +2,15 @@ from youBot_env import youBotEnv
 from youBot_base import youBotBase
 from youBot_arm import youBotArm
 from pyrep.robots.arms.youBot import youBot
-from pyrep.robots.mobiles.youBot import youBot as youBot_base
+from pyrep.robots.mobiles.youbot import YouBot as youBot_base
 import numpy as np
 import torch
 import random
 from math import sqrt
 
-class youBotAll(youBotBase, youBotArm):
+class youBotAll(youBotArm, youBotBase):
     def __init__(self, scene_name,  obs_lowdim=True, rpa=6, reward_dense=True, boundary=1, demonstration_mode=False):
-        super().__init__(scene_name, obs_lowdim=obs_lowdim, reward_dense=reward_dense, rpa=rpa, demonstration_mode=demonstration_mode)
+        super().__init__(scene_name, obs_lowdim=obs_lowdim, reward_dense=reward_dense, rpa=rpa, demonstration_mode=demonstration_mode, boundary=boundary)
 
         self.action_space = 6
         self.action = [0 for _ in range(self.action_space)]
@@ -20,9 +20,9 @@ class youBotAll(youBotBase, youBotArm):
             _, obsArm = youBotArm.get_observation(self)
             _, obsBase = youBotBase.get_observation(self)
             targ_vec = np.array(self.target_base.get_position()) - np.array(self.tip.get_position())
-            return None, torch.tensor(np.concatenate((obsArm[:12], obsBase[:5], self.action, targ_vec),axis=0))
+            return None, torch.tensor(np.concatenate((obsArm[:12], obsBase[:5], self.action, targ_vec),axis=0)).float()
         else:
-            return env.render('arm'), torch.tensor(np.concatenate((obsArm[:16], obsBase[:6], self.action),axis=0))
+            return env.render('arm'), torch.tensor(np.concatenate((obsArm[:16], obsBase[:6], self.action),axis=0)).float()
 
     def step(self,action):
         reward = 0
@@ -92,10 +92,10 @@ class youBotAll(youBotBase, youBotArm):
 
     def _reset_target_position(self,random_=False, position=[0.6,0.6,0.3]):
         if random_:
-            x_T,y_T = self.rand_bound()
+            x_T,y_T, _ = self.rand_bound()
             z_T = random.uniform(0.2,0.4)
         else:
-            x_T,y_T, z_T = position
+            x_T, y_T, z_T = position
 
         self.target_base.set_position([x_T,y_T,z_T])
         self.done = False

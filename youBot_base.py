@@ -1,5 +1,5 @@
 from youBot_env import youBotEnv
-from pyrep.robots.mobiles.youBot import youBot as youBot_base
+from pyrep.robots.mobiles.youbot import YouBot as youBot_base
 import numpy as np
 import torch
 from math import sqrt, pi
@@ -7,7 +7,7 @@ import random
 
 class youBotBase(youBotEnv):
     def __init__(self, scene_name, obs_lowdim=True, rpa=6, reward_dense=True, boundary=1, demonstration_mode=False):
-        super().__init__(scene_name, reward_dense=reward_dense)
+        super().__init__(scene_name, reward_dense, boundary)
         # Base init and handles
         self.mobile_base = youBot_base()
         self.target_base = self.mobile_base.target_base
@@ -78,7 +78,7 @@ class youBotBase(youBotEnv):
 
     def _reset_target_position(self,random_=False, position=[0,0]):
         if random_:
-            x_T,y_T = self.rand_bound()
+            x_T,y_T, _ = self.rand_bound()
         else:
             x_T,y_T = position
 
@@ -89,11 +89,9 @@ class youBotBase(youBotEnv):
         if random_:
             target_pos = self.target_base.get_position()
 
-            x_L, y_L = self.rand_bound()
+            x_L, y_L, orientation = self.rand_bound()
             while sqrt((target_pos[0]-x_L)**2 + (target_pos[1]-y_L)**2) < 0.5:
-                x_L, y_L = self.rand_bound()
-
-            orientation = random.random()*2*pi
+                x_L, y_L, orientation = self.rand_bound()
         else:
             x_L, y_L = position
 

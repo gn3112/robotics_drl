@@ -11,9 +11,11 @@ import numpy as np
 import time
 import cv2
 
-class youBot_controller(youBotBase):
+from math import sqrt
+
+class youBot_controller(youBotAll):
     def __init__(self, OBS_LOW, ARM, BASE, REWARD, BOUNDARY, NAME):
-        super().__init__(obs_lowdim=OBS_LOW, rpa=1, reward_dense=REWARD, demonstration_mode=True)
+        super().__init__('youbot_navig.ttt', obs_lowdim=OBS_LOW, rpa=1, reward_dense=REWARD, demonstration_mode=True)
 
         self.OBS_LOW = OBS_LOW
         self.ARM = ARM

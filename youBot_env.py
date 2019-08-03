@@ -1,4 +1,5 @@
 from pyrep import PyRep
+from pyrep.const import RenderMode
 from pyrep.objects.shape import Shape
 from pyrep.objects.joint import Joint
 from pyrep.objects.object import Object
@@ -9,10 +10,10 @@ import random
 from os.path import dirname, join, abspath
 
 class youBotEnv(object):
-    def __init__(self, scene_name, reward_dense=True, boundary=1):
+    def __init__(self, scene_name, reward_dense, boundary):
         self.pr = PyRep()
         SCENE_FILE = join(dirname(abspath(__file__)), scene_name)
-        self.pr.launch(SCENE_FILE,headless=False)
+        self.pr.launch(SCENE_FILE,headless=True)
         self.pr.start()
 
         if scene_name != 'youbot_navig.ttt':
@@ -21,6 +22,8 @@ class youBotEnv(object):
         # Vision sensor handles
         self.camera_top = VisionSensor('Vision_sensor')
         self.camera_arm = VisionSensor('Vision_sensor1')
+        self.camera_arm.set_render_mode(RenderMode.OPENGL3)
+        self.camera_arm.set_resolution([128,128])
 
         self.reward_dense = reward_dense
         self.reward_termination = 1 if self.reward_dense else 0
@@ -41,15 +44,10 @@ class youBotEnv(object):
         return [(2 * random.random() - 1) for _ in range(self.action_space)]
 
     def rand_bound(self):
-        xy_min = -self.boundary
-        xy_max = self.boundary
-        x = random.uniform(xy_min,xy_max)
-
-        y_max = sqrt(xy_max**2-x**2)
-        y_min = - y_max
-        y = random.uniform(y_min,y_max)
-
-        return x, y
+        x = random.uniform(-self.boundary,self.boundary)
+        y = random.uniform(-self.boundary,self.boundary)
+        orientation = random.random() * 2 * pi
+        return x, y, orientation
 
     def action_type(self):
         return 'continuous'
