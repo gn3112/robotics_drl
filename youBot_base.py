@@ -24,6 +24,10 @@ class youBotBase(youBotEnv):
         self.xy_vel = [0,0]
         self.rot_vel = [0]
 
+        self.prev_error = np.array([0.,0.,0.])
+        self.Kp = 1.
+        self.Kd = 0.1
+
         # "Might need to remove this if consider a fixed camera pos/orient only"
         # if self.obs_lowdim == False and base == True:
         #     self.arm.set_joint_positions([self.arm_start_pos[0],self.arm_start_pos[1]
@@ -127,6 +131,16 @@ class youBotBase(youBotEnv):
             for i in range(2):
                 scaled_action[i] = action[i]*0.01 #unnormalise by multiplying by 0.01 (max) for v=4rad/s
             scaled_action[2] = action[2]*6 #max v rota = 6 rad/s
+
+            e = np.array(action)
+            e_P = e
+            e_D = e - self.prev_error
+            action[0] = self.Kp * e_P[0]  + self.Kd * e_D[0]
+            action[1] = self.Kp * e_P[1]  + self.Kd * e_D[1]
+            action[2] = self.Kp * e_P[2]  + self.Kd * e_D[2]
+
+            self.prev_error = e
+
             self.mobile_base.set_cartesian_position(action)
             return action
         else:
