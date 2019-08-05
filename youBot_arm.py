@@ -18,7 +18,7 @@ class youBotArm(youBotEnv):
         self.tip = self.arm.get_tip()
         self.config_tree = self.arm.get_configuration_tree()
 
-        self.action_space = 3
+        self.action_space = 5
         self.prev_tip_pos = np.array(self.tip.get_position())
         self.action = [0 for _ in range(self.action_space)]
         self.done = False
@@ -122,17 +122,20 @@ class youBotArm(youBotEnv):
 
     def _set_actuation(self, action):
         if not self.demonstration_mode:
-            scaled_action = np.array(action)*0.01 + np.array(self.prev_tip_pos)
-            try:
-                joint_values_arm = self.arm.solve_ik(position=scaled_action.tolist(), euler=[0,0,1.57])
-                self.arm.set_joint_target_positions(joint_values_arm)
-            except:
-                pass
+            # scaled_action = np.array(action)*0.01 + np.array(self.prev_tip_pos)
+            # try:
+            #     joint_values_arm = self.arm.solve_ik(position=scaled_action.tolist(), euler=[0,0,1.57])
+            #     self.arm.set_joint_target_positions(joint_values_arm)
+            # except:
+            #     pass
+            scaled_action = np.array(action) * 1.57
+            self.arm.set_joint_target_velocities(scaled_action)
             return action
         else:
-            tip_pos = np.array(self.tip.get_position())
-            scaled_action = ((tip_pos - self.prev_tip_pos)/0.01).tolist()
-            self.action = scaled_action
+            # tip_pos = np.array(self.tip.get_position())
+            # scaled_action = ((tip_pos - self.prev_tip_pos)/0.01).tolist()
+            # self.action = scaled_action
+            scaled_action = np.array(self.arm.get_joint_velocities())/1.57
             return scaled_action
 
     def step_limit(self):
