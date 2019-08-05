@@ -8,6 +8,7 @@ from pyrep.objects.dummy import Dummy
 from math import pi, sqrt
 import random
 from os.path import dirname, join, abspath
+import os
 
 class youBotEnv(object):
     def __init__(self, scene_name, reward_dense, boundary):
@@ -17,6 +18,8 @@ class youBotEnv(object):
         self.pr.start()
 
         if scene_name != 'youbot_navig.ttt':
+            home_dir = os.path.expanduser('~')
+            os.chdir(join(home_dir,'robotics_drl'))
             self.pr.import_model('youbot.ttm')
 
         # Vision sensor handles
