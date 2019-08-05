@@ -122,7 +122,7 @@ def main():
                 action_base, path_base_done = path_base.step()
                 steps += 1
                 if args.ARM:
-                    action_arm = [0,0,0]
+                    action_arm = [0,0,0,0,0]
                     action = np.concatenate((action_base,action_arm),axis=0)
                 else:
                     action = action_base
@@ -159,18 +159,25 @@ def main():
                     print("No path for the arm could be computed")
                     continue
 
+                #path_arm.visualize()
                 time.sleep(0.1)
                 path_arm_done = False
                 done = False
-                while not done:
-                    action_arm, path_arm_done = [0,0,0], path_arm.step() #Action zero as computed in the environment class
-                    action_base = [0,0,0] if args.BASE else []
-                    steps += 1
-                    next_obs, reward, done = controller.step(np.concatenate((action_base,action_arm),axis=0))
-                    next_obs = next_obs.tolist()
-                    controller.log_obs(obs + next_obs + controller.action + [reward,done,steps,ep+1])
+                try:
+                    while not done:
+                        action_arm, path_arm_done = [0,0,0,0,0], path_arm.step() #Action zero as computed in the environment class
+                        action_base = [0,0,0] if args.BASE else []
+                        steps += 1
+                        next_obs, reward, done = controller.step(np.concatenate((action_base,action_arm),axis=0))
+                        next_obs = next_obs.tolist()
+                        controller.log_obs(obs + next_obs + controller.action + [reward,done,steps,ep+1])
 
-                    obs = next_obs
+                        obs = next_obs
+                except:
+                    args.N_DEM += 1
+                    continue
+
+                #path_arm.clear_visualization()
 
         if ep % 10 == 0 and ep != 0:
             print("Generated 10 episodes")
