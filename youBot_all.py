@@ -12,6 +12,7 @@ class youBotAll(youBotArm, youBotBase):
     def __init__(self, scene_name,  obs_lowdim=True, rpa=6, reward_dense=True, boundary=1, demonstration_mode=False):
         super().__init__(scene_name, obs_lowdim=obs_lowdim, reward_dense=reward_dense, rpa=rpa, demonstration_mode=demonstration_mode, boundary=boundary)
 
+        self.reward_dense = reward_dense
         self.action_space = 6
         self.action = [0 for _ in range(self.action_space)]
 
@@ -84,7 +85,7 @@ class youBotAll(youBotArm, youBotBase):
             self.done = True
         elif dist_from_origin > self.boundary: # Out of bound reward for navigation
             self.done = True
-            reward = -dist_ee_target/5 if self.reward_dense else -1
+            reward = -3
         else:
             reward = -dist_ee_target/5 if self.reward_dense else -1
 
@@ -99,3 +100,6 @@ class youBotAll(youBotArm, youBotBase):
 
         self.target_base.set_position([x_T,y_T,z_T])
         self.done = False
+
+    def step_limit(self):
+        return 350
