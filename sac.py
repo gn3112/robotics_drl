@@ -74,11 +74,11 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
     ALPHA = 0.3
     BETA = 1
-    epsilon = 0.01
-    epsilon_d = 0.3
-    weights = 1
-    lambda_ac = 0.7
-    lambda_bc = 0.4
+    epsilon = 0.0001 #0.1
+    epsilon_d = 0.3 #0.3
+    weights = 1 #1
+    lambda_ac = 0.7 #0.7
+    lambda_bc = 0.4 #0.4
 
     setup_logger(logdir, locals())
     ENV = __import__(ENV)
@@ -235,9 +235,11 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 behavior_loss = torch.tensor([]).to(device)
                 priorities = torch.abs(td_error).tolist()
                 i = 0
+                count_dem = 0
                 for idx in idxes:
                     priorities[i] += epsilon
                     if idx < n_demonstrations:
+                        count_dem += 1
                         if BEHAVIOR_CLONING:
                             actor_action_dem = batch['action'][i]
                             actual_action_dem, _ = actor(batch['state'][i], log_prob=False, deterministic=True)
@@ -309,6 +311,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             logz.log_tabular('Policy-network loss', policy_loss.detach().cpu().numpy())
             logz.log_tabular('Alpha loss',alpha_loss.detach().cpu().numpy())
             logz.log_tabular('Alpha',alpha.detach().cpu().numpy())
+            logz.log_tabular('Demonstrations current batch', count_dem)
             logz.dump_tabular()
 
             logz.save_pytorch_model(actor.state_dict())
