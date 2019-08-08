@@ -85,9 +85,9 @@ class youBotAll(youBotArm, youBotBase):
         if dist_ee_target < 0.05: #0.035
             reward = self.reward_termination
             self.done = True
-        elif dist_from_origin > self.boundary: # Out of bound reward for navigation
-            self.done = True
-            reward = -3
+        #elif dist_from_origin > self.boundary: # Out of bound reward for navigation
+        #    self.done = True
+        #    reward = -3
         else:
             reward = -dist_ee_target/5 if self.reward_dense else -1
 
