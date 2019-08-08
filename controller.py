@@ -13,7 +13,7 @@ import cv2
 
 from math import sqrt
 
-class youBot_controller(youBotAll):
+class youBot_controller(youBotArm):
     def __init__(self, OBS_LOW, ARM, BASE, REWARD, BOUNDARY, NAME):
         super().__init__('youbot_navig.ttt', obs_lowdim=OBS_LOW, rpa=1, reward_dense=REWARD, demonstration_mode=True)
 
@@ -35,6 +35,8 @@ class youBot_controller(youBotAll):
         if not OBS_LOW:
             if not(os.path.exists(os.path.join(self.logdir,'image_observations'))):
                 os.makedirs(os.path.join(self.logdir,'image_observations'))
+
+        self.arm.set_control_loop_enabled(1)
 
     def is_base_reached(self):
         pos_v = self.intermediate_target.get_position(relative_to=self.base_ref)
@@ -168,7 +170,7 @@ def main():
                         action_arm, path_arm_done = [0,0,0,0,0], path_arm.step() #Action zero as computed in the environment class
                         action_base = [0,0,0] if args.BASE else []
                         steps += 1
-                        next_obs, reward, done = controller.step(np.concatenate((action_base,action_arm),axis=0))
+                        next_obs, reward, done = controller.step(np.concatenate((action_base,action_arm),axis=0).tolist())
                         next_obs = next_obs.tolist()
                         controller.log_obs(obs + next_obs + controller.action + [reward,done,steps,ep+1])
 
