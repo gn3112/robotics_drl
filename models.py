@@ -81,11 +81,12 @@ class TanhNormal(Distribution):
 
 
 class SoftActor(nn.Module):
-  def __init__(self, hidden_size, action_space, obs_space, flow_type='radial', flows=0):
+  def __init__(self, hidden_size, action_space, obs_space, flow_type='radial', flows=0, new_architecture=False):
     super().__init__()
     self.hidden_size = hidden_size
     self.action_space = action_space
     self.obs_space = obs_space
+    self.new_architecture = new_architecture
     self.log_std_min, self.log_std_max = -20, 2  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
     if len(self.obs_space) > 1:
         self.conv1 = nn.Conv2d(4,16,kernel_size=4, stride=3) # Check here for dim (frame staking)
@@ -101,7 +102,7 @@ class SoftActor(nn.Module):
         self.fc1 = nn.Linear(conv_h*conv_w*32,hidden_size)
         self.fc2 = nn.Linear(hidden_size,self.action_space*2)
     else:
-        if self.action_space > 3:
+        if new_architecture:
             self.fc1 = nn.Linear(self.obs_space[0], hidden_size)
             self.fc2 = nn.Linear(hidden_size, hidden_size)
             self.fc3 = nn.Linear(hidden_size, self.action_space)
@@ -113,7 +114,8 @@ class SoftActor(nn.Module):
             self.policy = nn.Sequential(*layers)
 
     flows, flow_type = (1, 'tanh') if flows == 0 else (flows, flow_type)
-    if self.action_space > 3:
+
+    if self.new_architecture:
         self.flows_base = NormalisingFlow(self.action_space/2, flows, flow_type=flow_type)
         self.flows_arm = NormalisingFlow(self.action_space/2, flows, flow_type=flow_type)
     else:
@@ -129,7 +131,7 @@ class SoftActor(nn.Module):
         x = (self.fc2(x))
         policy_mean, policy_log_std = x.view(-1,self.action_space*2).chunk(2,dim=1)
     else:
-        if self.action_space > 3:
+        if self.new_architecture:
             x = F.tanh(self.fc1(state))
             x = F.tanh(self.fc2(x))
             policy_base = self.fc3(x)
