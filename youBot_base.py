@@ -25,8 +25,10 @@ class youBotBase(youBotEnv):
         self.rot_vel = [0]
 
         self.prev_error = np.array([0.,0.,0.])
+        self.cumulative_error = np.array([0.,0.,0.])
         self.Kp = 1.
-        self.Kd = 0.1
+        self.Kd = 0
+        self.Ki = 0
 
         # "Might need to remove this if consider a fixed camera pos/orient only"
         # if self.obs_lowdim == False and base == True:
@@ -129,23 +131,26 @@ class youBotBase(youBotEnv):
         scaled_action = [0,0,0]
         if not self.demonstration_mode:
             for i in range(2):
-                scaled_action[i] = action[i]*0.01 #unnormalise by multiplying by 0.01 (max) for v=4rad/s
+                scaled_action[i] = action[i]*4 #unnormalise by multiplying by 0.01 (max) for v=4rad/s
             scaled_action[2] = action[2]*6 #max v rota = 6 rad/s
 
-            e = np.array(action)
-            e_P = e
-            e_D = e - self.prev_error
-            action[0] = self.Kp * e_P[0]  + self.Kd * e_D[0]
-            action[1] = self.Kp * e_P[1]  + self.Kd * e_D[1]
-            action[2] = self.Kp * e_P[2]  + self.Kd * e_D[2]
+            # e = np.array(scaled_action)
+            # e_P = e
+            # e_D = e - self.prev_error
+            # e_I = self.cumulative_error + e
+            # action[0] = self.Kp * e_P[0]  + self.Kd * e_D[0] + self.Ki * e_I[0]
+            # action[1] = self.Kp * e_P[1]  + self.Kd * e_D[1] + self.Ki * e_I[1]
+            # action[2] = self.Kp * e_P[2]  + self.Kd * e_D[2] + self.Ki * e_I[2]
+            #
+            # self.prev_error = e
+            # self.cumulative_error = self.cumulative_error + e
 
-            self.prev_error = e
-
-            self.mobile_base.set_cartesian_position(action)
+            self.mobile_base.set_base_angular_velocites(action)
             return action
         else:
             for i in range(2):
-                scaled_action[i] = (action[i] * (0.05*0.1/2)) / 0.01
-            scaled_action[2] = action[2]/6
+                # scaled_action[i] = (action[i] * (0.05*0.1/2)) / 0.01
+                scaled_action[i] = action[i] / 4
+            scaled_action[2] = action[2] / 6
             self.action = scaled_action
             return scaled_action
