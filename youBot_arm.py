@@ -135,8 +135,8 @@ class youBotArm(youBotEnv):
         else:
             # tip_pos = np.array(self.tip.get_position())
             # scaled_action = ((tip_pos - self.prev_tip_pos)/0.01).tolist()
-            # self.action = scaled_action
             scaled_action = np.array(self.arm.get_joint_velocities())/1.57
+            self.action = scaled_action.tolist()
             return scaled_action
 
     def step_limit(self):
