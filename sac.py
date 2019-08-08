@@ -78,7 +78,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     epsilon_d = 0.3 #0.3
     weights = 1 #1
     lambda_ac = 0.7 #0.7
-    lambda_bc = 0.4 #0.4
+    lambda_bc = 0.3 #0.4
 
     setup_logger(logdir, locals())
     ENV = __import__(ENV)
@@ -138,6 +138,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     pbar = tqdm(range(1, MAX_STEPS + 1), unit_scale=1, smoothing=0)
 
     steps = 0
+    success = 0
     for step in pbar:
         with torch.no_grad():
             if step < UPDATE_START and not DEMONSTRATIONS:
@@ -166,6 +167,8 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 eval_c2 = True #TODO: multiprocess pyrep with a session for each testing and training
                 steps = 0
                 state = env.reset().float().to(device)
+                if reward == 1:
+                    success += 1
 
         if step > UPDATE_START and step % UPDATE_INTERVAL == 0:
 
@@ -244,10 +247,10 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                             actor_action_dem = batch['action'][i]
                             actual_action_dem, _ = actor(batch['state'][i], log_prob=False, deterministic=True)
 
-                            q_value_actor = (critic_1(batch['state'][i], batch['action'][i]) + critic_2(batch['state'][i], batch['action'][i]))/2
-                            q_value_actual = (critic_1(batch['state'][i], actual_action_dem) + critic_2(batch['state'][i], actual_action_dem))/2
-                            if q_value_actor > q_value_actual: # Q Filter
-                                behavior_loss = torch.cat((behavior_loss,F.mse_loss(actor_action_dem, actual_action_dem.squeeze()).unsqueeze(dim=0)), dim=0)
+                            # q_value_actor = (critic_1(batch['state'][i], batch['action'][i]) + critic_2(batch['state'][i], batch['action'][i]))/2
+                            # q_value_actual = (critic_1(batch['state'][i], actual_action_dem) + critic_2(batch['state'][i], actual_action_dem))/2
+                            # if q_value_actor > q_value_actual: # Q Filter
+                            behavior_loss = torch.cat((behavior_loss,F.mse_loss(actor_action_dem, actual_action_dem.squeeze()).unsqueeze(dim=0)), dim=0)
                         priorities[i] += epsilon_d
                     i += 1
                 if not behavior_loss.nelement() == 0:
@@ -300,6 +303,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             return_ep, steps_ep = eval_.sample_episode(actor)
 
             logz.log_tabular('Training steps', step)
+            logz.log_tabular('Cumulative Success', success)
             logz.log_tabular('Validation return', return_ep.mean())
             logz.log_tabular('Validation steps',steps_ep.mean())
             logz.log_tabular('Validation return std',return_ep.std())
