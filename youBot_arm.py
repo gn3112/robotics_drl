@@ -30,6 +30,7 @@ class youBotArm(youBotEnv):
         self.target_base = Dummy('youBot_target_base')
 
         self.arm.set_motor_locked_at_zero_velocity(1)
+        self.arm.set_control_loop_enabled(0)
         self.arm.set_joint_target_velocities([0,0,0,0,0])
         self.mobile_base.set_motor_locked_at_zero_velocity(1)
         self.mobile_base.set_joint_target_velocities([0,0,0,0])
