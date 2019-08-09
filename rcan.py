@@ -88,6 +88,12 @@ def order_dataset():
 
         os.rename(os.path.join(dir_rcan,name),os.path.join(dir_rcan,new_name))
 
+def weights_init(m):
+    if isinstance(m, torch.nn.Conv2d):
+        torch.nn.init.orthogonal(m.weight.data)
+        if m.bias is not None:
+            torch.init.zeros_(m.bias)
+
 class RCAN_Dataset(Dataset):
     def __init__(self, dir, transform=None):
         self.dir = dir
@@ -215,6 +221,7 @@ def main():
     valid_loader = DataLoader(dataset, batch_size=BATCH_SIZE, sampler=valid_sampler)
 
     net = RCAN().to(device)
+    net.apply(weights_init)
     optimiser = optim.Adam(net.parameters(), lr=0.001)
 
     steps=0
@@ -240,6 +247,13 @@ def main():
                         with torch.no_grad():
                             output_valid = net(sampled_batch_valid['input'].to(device))
                             valid_loss += F.smooth_l1_loss(output_valid, torch.cat((sampled_batch_valid['output'][0],sampled_batch_valid['output'][1]), 1).to(device))
+                            if  i_batch_valid == 0:
+                                test_sim_images = sampled_batch_valid['input']
+
+                    canonical_imgs = output_valid.view(-1,4,128,128)[:,0:3,:,:].cpu()
+                    depth_imgs = output_valid.view(-1,4,128,128)[:,-1,:,:].view(-1,1,128,128).expand(-1,3,128,128).cpu()
+                    os.chdir(training_dir)
+                    save_image(torch.cat((test_sim_images, canonical_imgs, depth_imgs),dim=0), '%s_sim_valid.png'%(steps), nrow=BATCH_SIZE, normalize=False)
 
                     # Real image validation
                     output_test = net(test_images.to(device))
@@ -252,7 +266,7 @@ def main():
 
                     print('Loss: %s' %(str(loss.item())[:6]))
                     print('Validation Loss: %s' %(str(valid_loss.item())[:6]))
-                    
+
                     os.chdir(training_dir)
                     f.write('%s\t%s\ts%s\t%s \n'%(round(loss.item(),6), round(valid_loss.item(),6), steps, i))
 
