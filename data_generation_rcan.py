@@ -15,6 +15,7 @@ from pyrep.const import TextureMappingMode
 from PIL import Image
 import json
 import time
+import colorsys
 
 def visualise(walls):
     a = np.empty((32,32),dtype=float)
@@ -121,14 +122,14 @@ def create_structure(n_iteration):
 def create_random_scene():
     # Constants
     width_w = 2
-    height_w = 2.3
+    height_w = 3
     dist_walls_front = 2
     dist_walls_side = 3
 
     walls = [[],[]]
 
     # Add wall
-    for w_n in range(5):
+    for w_n in range(6):
         width_w = uniform(3,3)
         or_w = randrange(2)
 
@@ -193,12 +194,13 @@ def add_procedural_object():
     a.set_renderable(1)
 
     b.reset_dynamic_object()
-    pos_2d = [uniform(-5, 5) for _ in range(2)]
+    pos_2d = [uniform(-2.5, 2.5) for _ in range(2)]
     b.set_position(pos_2d + [3])
 
     return a, b
 
 def add_object():
+    # Small object and Large object
     while True:
         obj_dir = choice([name for name in os.listdir('/home/georges/Downloads/models') if name[-3:] == 'obj'])
         obj_mesh_file = join('/home/georges/Downloads/models', obj_dir)
@@ -214,7 +216,7 @@ def add_object():
 
     # Create convex collidable object
 
-    b = a.get_convex_decomposition(use_vhacd=True, vhacd_res=100)
+    b = a.get_convex_decomposition(use_vhacd=True, vhacd_res=100) # Half
     box_size = a.get_bounding_box()
     # b = Shape.create(PrimitiveShape.CUBOID,[box_size[-1],box_size[3],box_size[1]],orientation=[0,0,0], static=True)
 
@@ -239,7 +241,7 @@ def add_object():
     iter = 0
     while a.check_collision():
         iter += 1
-        pos_2d = [uniform(-5, 5) for _ in range(2)]
+        pos_2d = [uniform(-2.5, 2.5) for _ in range(2)]
         b.set_position(pos_2d + [3])
         if iter > 12:
             break
@@ -285,8 +287,11 @@ def apply_domain_rand(floor, camera,
         color = [random() for _ in range(3)]
         texture_objects.append(texture_object)
         for i in j:
-            # i.set_color(color)
             i.set_texture(texture = texture_id, mapping_mode = TextureMappingMode.PLANE, decal_mode=True)
+            color_rgb = i.get_color()
+            h, l, s = colorsys.rgb_to_hls(color_rgb[0],color_rgb[1],color_rgb[2])
+            r, g, b = colorsys.hls_to_rgb(h, l, s + 0.15)
+            i.set_color([r,g,b])
 
     env.pr.step()
 
@@ -296,7 +301,7 @@ def apply_domain_rand(floor, camera,
     lights.set_position(light_pos)
     # Camera
     camera_pos = np.array(camera.get_position())
-    camera_pos = camera_pos + np.array([uniform(-0.1,0.1) for _ in range(3)])
+    camera_pos = camera_pos + np.array([uniform(-0.05,0.05) for _ in range(3)])
     camera.set_position(camera_pos.tolist())
 
     env.pr.step()
@@ -347,11 +352,11 @@ def main():
     # else:
     #     os.mkdir('/home/georges/robotics_drl/data/rcan_data')
     area = 5**2
-    objects_per_m2 = 0.5
-    n_samples = 10000
-    l_ep = 200
+    objects_per_m2 = 1.2
+    n_samples = 50
+    l_ep = 10
 
-    env = youBotAll(scene_name='scene1.ttt', boundary=5)
+    env = youBotAll(scene_name='scene1_5x5.ttt', boundary=2.5)
 
     n_objects = int(round(area * objects_per_m2))//2
     env.target_base.set_renderable(0) # Add a cube?
@@ -381,10 +386,11 @@ def main():
         walls = walls[0] + walls[1] + perm_walls
         objects_vis = []
         objects_resp = []
-        for _ in range(n_objects):
-            object_vis, object_resp = add_procedural_object()
-            objects_vis.append([object_vis])
-            objects_resp.append(object_resp)
+        for i_obj in range(n_objects):
+            if i_obj % 3 == 0:
+                object_vis, object_resp = add_procedural_object()
+                objects_vis.append([object_vis])
+                objects_resp.append(object_resp)
 
             object_vis, object_resp = add_object()
             objects_vis.append(object_vis)
@@ -404,9 +410,10 @@ def main():
                 x, y, orient = env.rand_bound()
                 env.pr.set_configuration_tree(env.config_tree)
                 env.mobile_base.set_2d_pose([x, y, orient])
+                env.pr.step()
                 collision_state = env.mobile_base.assess_collision()
                 mobile_orient = env.mobile_base.get_orientation()
-                if not collision_state and mobile_orient[0] < 0.2 and mobile_orient[1] < 0.2 :
+                if not collision_state and mobile_orient[0] < 0.02 and mobile_orient[1] < 0.02 :
                     break
 
             env.pr.step()
@@ -418,7 +425,7 @@ def main():
                                 lights, walls, ceiling, objects_vis, env)
                 else:
                     lights.set_position([0,0,-0.5])
-                    camera.set_position(camera_pos, relative_to=env.mobile_base)
+                    # camera.set_position(camera_pos, relative_to=env.mobile_base)
                     remove_textures(floor, walls, ceiling, objects_vis, env)
 
                 save_sample(rand_active, camera, steps, 'rcan_data')
@@ -426,7 +433,6 @@ def main():
             [j.remove() for j in texture_objects]
 
             steps += 1
-
         [j.remove() for j in walls[:-4]]
         for j in objects_vis:
             for i in j:
@@ -435,9 +441,9 @@ def main():
         [j.remove() for j in objects_resp]
         walls = []
 
-    env.terminate()
+    print(start_time - time.time())
 
-    print(time.time()-time_start)
+    env.terminate()
 
 if __name__ == "__main__":
     main()
