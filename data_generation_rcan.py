@@ -128,7 +128,7 @@ def create_random_scene():
     walls = [[],[]]
 
     # Add wall
-    for w_n in range(5):
+    for w_n in range(6):
         width_w = uniform(3,3)
         or_w = randrange(2)
 
@@ -143,8 +143,10 @@ def create_random_scene():
 
         if w_n == 0:
             continue
-
+        
+        steps = 0 
         while True:
+            steps += 1
             x_pos = uniform(-2.5,2.5)
             y_pos = uniform(-2.5,2.5)
 
@@ -160,6 +162,9 @@ def create_random_scene():
                     break
 
             if c == True:
+                break
+
+            if steps > 30:
                 break
 
         walls[or_w][-1].set_collidable(1)
@@ -193,15 +198,17 @@ def add_procedural_object():
     a.set_renderable(1)
 
     b.reset_dynamic_object()
-    pos_2d = [uniform(-5, 5) for _ in range(2)]
+    pos_2d = [uniform(-2.5, 2.5) for _ in range(2)]
     b.set_position(pos_2d + [3])
 
     return a, b
 
 def add_object():
+    home_dir = expanduser('/')
+    dir = join(home_dir, 'mnt/datasets/georges18/models')
     while True:
-        obj_dir = choice([name for name in os.listdir('/home/georges/Downloads/models') if name[-3:] == 'obj'])
-        obj_mesh_file = join('/home/georges/Downloads/models', obj_dir)
+        obj_dir = choice([name for name in os.listdir(dir) if name[-3:] == 'obj'])
+        obj_mesh_file = join(dir,obj_dir)
         a = Shape.import_mesh(filename=obj_mesh_file,scaling_factor=0.01)
         box_size = a.get_bounding_box()
         height = box_size[1]
@@ -213,8 +220,11 @@ def add_object():
             break
 
     # Create convex collidable object
-
-    b = a.get_convex_decomposition(use_vhacd=True, vhacd_res=100)
+    try:
+        b = a.get_convex_decomposition(use_vhacd=True, vhacd_res=100)
+    except:
+        a.remove()
+        return [], []
     box_size = a.get_bounding_box()
     # b = Shape.create(PrimitiveShape.CUBOID,[box_size[-1],box_size[3],box_size[1]],orientation=[0,0,0], static=True)
 
@@ -239,7 +249,7 @@ def add_object():
     iter = 0
     while a.check_collision():
         iter += 1
-        pos_2d = [uniform(-5, 5) for _ in range(2)]
+        pos_2d = [uniform(-2.5, 2.5) for _ in range(2)]
         b.set_position(pos_2d + [3])
         if iter > 12:
             break
@@ -321,35 +331,44 @@ def save_sample(rand_active, camera, n_sample, dir):
         rgb_img_rand = camera.capture_rgb()
         img_3 = Image.fromarray(np.uint8(rgb_img_rand*255),'RGB')
         _change_dir(dir)
-        img_3.save('%s_input0.png'%(n_sample+9613))
+        img_3.save('%s_input0.png'%(n_sample))
     else:
         rgb_img_can = camera.capture_rgb()
         rgb_d_img = camera.capture_depth()
         img_1 = Image.fromarray(np.uint8(rgb_img_can*255),'RGB')
         img_2 = Image.fromarray(np.uint8(rgb_d_img*255))
         _change_dir(dir)
-        img_1.save('%s_output0.png'%(n_sample+9613))
-        img_2.save('%s_output1.png'%(n_sample+9613))
+        img_1.save('%s_output0.png'%(n_sample))
+        img_2.save('%s_output1.png'%(n_sample))
 
 def _change_dir(dir):
-    home_dir = os.path.expanduser('~')
-    os.chdir(os.path.join(home_dir,'robotics_drl/data/%s'%(dir)))
+    home_dir = expanduser('~')
+    os.chdir(join(home_dir,'robotics_drl/data/%s'%(dir)))
 
 def _get_texture(env):
-    texture_file = choice(os.listdir('/home/georges/robotics_drl/data/textures/obj_textures/'))
-    texture_object, texture_id = env.pr.create_texture(filename='/home/georges/robotics_drl/data/textures/obj_textures/%s'%(texture_file))
+    home_dir = expanduser('~')
+    texture_file = choice(os.listdir(join(home_dir,'robotics_drl/textures/obj_textures/')))
+    texture_object, texture_id = env.pr.create_texture(filename=join(home_dir,'robotics_drl/textures/obj_textures/%s'%(texture_file)))
     texture_object.set_renderable(0)
     return texture_id, texture_object
 
 def main():
-    # if os.path.exists('/home/georges/robotics_drl/data/rcan_data'):
-    #     raise Exception('rcan_data file already exists, make sure not overwriting generated data')
-    # else:
-    #     os.mkdir('/home/georges/robotics_drl/data/rcan_data')
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--img_n', required=True, type=int)
+
+    args = parser.parse_args()
+    
+    #home_dir = expanduser('~')
+    #if os.path.exists(join(home_dir,'robotics_drl/data/rcan_data')):
+    #    raise Exception('rcan_data file already exists, make sure not overwriting generated data')
+    #else:
+    #    os.mkdir(join(home_dir,'robotics_drl/data/rcan_data'))
+    
     area = 5**2
-    objects_per_m2 = 0.5
-    n_samples = 10000
-    l_ep = 200
+    objects_per_m2 = 0.9
+    n_samples = 3000
+    l_ep = 300
 
     env = youBotAll(scene_name='scene1.ttt', boundary=5)
 
@@ -375,7 +394,6 @@ def main():
     # Store some position in env then apply domain rand instead of set pos then rand then can
     time_start = time.time()
     for scene_no in range(n_samples//l_ep):
-
         walls = create_random_scene()
         ceiling.set_position([0,0] + [uniform(2.5,3)])
         walls = walls[0] + walls[1] + perm_walls
@@ -387,8 +405,9 @@ def main():
             objects_resp.append(object_resp)
 
             object_vis, object_resp = add_object()
-            objects_vis.append(object_vis)
-            objects_resp.append(object_resp)
+            if not object_vis:
+                objects_vis.append(object_vis)
+                objects_resp.append(object_resp)
 
         texture_objects = apply_domain_rand(floor, camera,
                     lights, walls, ceiling, objects_vis, env)
@@ -397,8 +416,9 @@ def main():
         lights.set_position([0,0,0])
         camera.set_position(camera_pos, relative_to=env.mobile_base)
 
-        for _ in range(100): env.pr.step()
-
+        for _ in range(50): env.pr.step()
+        
+        print('Starting randomisation')
         for sample_scene_no in range(l_ep):
             while True:
                 x, y, orient = env.rand_bound()
@@ -410,7 +430,6 @@ def main():
                     break
 
             env.pr.step()
-
             for rand_active in range(2):
                 rand_active = not rand_active
                 if rand_active:
@@ -421,7 +440,7 @@ def main():
                     camera.set_position(camera_pos, relative_to=env.mobile_base)
                     remove_textures(floor, walls, ceiling, objects_vis, env)
 
-                save_sample(rand_active, camera, steps, 'rcan_data')
+                save_sample(rand_active, camera, steps+args.img_n, 'rcan_data')
 
             [j.remove() for j in texture_objects]
 
@@ -434,6 +453,8 @@ def main():
 
         [j.remove() for j in objects_resp]
         walls = []
+
+        print('Generating a new scene...')
 
     env.terminate()
 
