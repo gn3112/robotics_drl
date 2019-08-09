@@ -21,7 +21,7 @@ def key(name):
         return int(a)
 
 def order_dataset():
-    dir_rcan = os.path.join(os.path.expanduser('~'),'robotics_drl/data/rcan_data')
+    dir_rcan = os.path.join(os.path.expanduser('~'),'robotics_drl/data/rcan_data_training')
     names = sorted(os.listdir(dir_rcan), key=key)
     len_dataset = len(names)
 
@@ -65,7 +65,6 @@ def order_dataset():
                     standby.append(other_name)
 
         if to_remove:
-            count_rem += 1
             for name in standby:
                 try:
                     os.remove(dir_rcan + '/' + name)
@@ -183,6 +182,9 @@ def main():
     if not os.path.exists(training_dir):
         os.mkdir(training_dir)
 
+    f = open(os.path.join(training_dir,'log.txt'),'w')
+    f.write('Training loss\tValidation loss\tSteps\tEpoch \n')
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     resize = T.Compose([T.ToTensor()])
@@ -191,10 +193,10 @@ def main():
                         T.Resize((128,128)),
                         T.ToTensor()])
 
-    dataset = RCAN_Dataset('robotics_drl/data/rcan_data', transform=T.Compose([T.ToTensor()]))
+    dataset = RCAN_Dataset('robotics_drl/data/rcan_data_training', transform=T.Compose([T.ToTensor()]))
     dataset_size = len(dataset)
-    valid_split = 0.01
-    EPOCH = 5
+    valid_split = 0.005
+    EPOCH = 1
     BATCH_SIZE = 8
     TOTAL_STEPS = EPOCH * int(np.floor(dataset_size/BATCH_SIZE))
     # for i_batch, sampled_batch in enumerate(dataloader):
@@ -234,7 +236,7 @@ def main():
                 optimiser.zero_grad()
                 loss.backward()
                 optimiser.step()
-                if steps % 60 == 0 and steps != 0:
+                if steps % 5 == 0 and steps != 0:
                     # pbar.set_description('Loss: %s' %(str(loss.item())[:6]))
                     # save_image(Y.squeeze()[0:3,:,:].view(-1,3,128,128),'%s_canonical.png'%(i),normalize=True)
                     # save_image(Y.squeeze()[-1,:,:].view(-1,1,128,128),'%sdepth.png'%(i),normalize=True)
@@ -265,7 +267,11 @@ def main():
                     print('Loss: %s' %(str(loss.item())[:6]))
                     print('Validation Loss: %s' %(str(valid_loss.item())[:6]))
 
+                    os.chdir(training_dir)
+                    f.write('%s\t%s\ts%s\t%s \n'%(round(loss.item(),6), round(valid_loss.item(),6), steps, i))
+
                     net.train()
+    f.close()
 
 if __name__ == "__main__":
     main()
