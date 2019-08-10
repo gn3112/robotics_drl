@@ -105,7 +105,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
         target_value_critic = create_target_network(value_critic).float().to(device)
         value_critic_optimiser = optim.Adam(value_critic.parameters(), lr=LEARNING_RATE)
     else:
-        target_critic_1 = create_target_network(critic_2)
+        target_critic_1 = create_target_network(critic_1)
         target_critic_2 = create_target_network(critic_2)
     actor_optimiser = optim.Adam(actor.parameters(), lr=LEARNING_RATE)
     critics_optimiser = optim.Adam(list(critic_1.parameters()) + list(critic_2.parameters()), lr=LEARNING_RATE)
@@ -133,6 +133,9 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     if not BEHAVIOR_CLONING:
         behavior_loss = 0
 
+    os.mkdir(os.path.join(home,'robotics_drl',logdir,'models'))
+    dir_models = os.path.join(home,'robotics_drl',logdir,'models')
+
     state, done = env.reset(), False
     state = state.float().to(device)
     pbar = tqdm(range(1, MAX_STEPS + 1), unit_scale=1, smoothing=0)
@@ -152,6 +155,10 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             # Execute a in the environment and observe next state s', reward r, and done signal d to indicate whether s' is terminal
             next_state, reward, done = env.step(action.squeeze(dim=0).cpu().tolist())
             next_state = next_state.float().to(device)
+
+            if step % 25 == 0:
+                action, _ = actor(state, log_prob=False, deterministic=True)
+                print(action)
 
             # Store (s, a, r, s', d) in replay buffer D
             if PRIORITIZE_REPLAY:
@@ -319,6 +326,10 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             logz.dump_tabular()
 
             logz.save_pytorch_model(actor.state_dict())
+
+            torch.save(actor.state_dict(), os.path.join(dir_models,'actor_model_%s.pkl'%(step)))
+            torch.save(critic_1.state_dict(), os.path.join(dir_models,'critic1_model_%s.pkl'%(step)))
+            torch.save(critic_2.state_dict(), os.path.join(dir_models,'critic1_model_%s.pkl'%(step)))
 
             #pbar.set_description('Step: %i | Reward: %f' % (step, return_ep.mean()))
 
