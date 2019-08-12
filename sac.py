@@ -93,7 +93,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     obs_space = env.observation_space()
     step_limit = env.step_limit()
 
-    actor = SoftActor(HIDDEN_SIZE, action_space, obs_space, flow_type=FLOW_TYPE, flows=FLOWS).float().to(device)
+    actor = SoftActor(HIDDEN_SIZE, action_space, obs_space, flow_type=FLOW_TYPE, flows=FLOWS, new_architecture=True).float().to(device)
     critic_1 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True).float().to(device)
     critic_2 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True).float().to(device)
     actor.apply(weights_init)
@@ -155,10 +155,6 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             # Execute a in the environment and observe next state s', reward r, and done signal d to indicate whether s' is terminal
             next_state, reward, done = env.step(action.squeeze(dim=0).cpu().tolist())
             next_state = next_state.float().to(device)
-
-            if step % 25 == 0:
-                action, _ = actor(state, log_prob=False, deterministic=True)
-                print(action)
 
             # Store (s, a, r, s', d) in replay buffer D
             if PRIORITIZE_REPLAY:
