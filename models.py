@@ -105,21 +105,19 @@ class SoftActor(nn.Module):
         if new_architecture:
             self.fc1 = nn.Linear(self.obs_space[0], hidden_size)
             self.fc2 = nn.Linear(hidden_size, hidden_size)
-            self.fc3 = nn.Linear(hidden_size, self.action_space)
-            self.fc4 = nn.Linear(hidden_size + self.action_space, hidden_size)
-            self.fc5 = nn.Linear(hidden_size, self.action_space)
-
+            self.fc3 = nn.Linear(hidden_size, 2)
+            self.fc4 = nn.Linear(hidden_size, self.action_space * 2)
         else:
             layers = [nn.Linear(self.obs_space[0], hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, self.action_space*2)] # nn.Softmax(dim=0))
             self.policy = nn.Sequential(*layers)
 
     flows, flow_type = (1, 'tanh') if flows == 0 else (flows, flow_type)
 
-    if self.new_architecture:
-        self.flows_base = NormalisingFlow(self.action_space/2, flows, flow_type=flow_type)
-        self.flows_arm = NormalisingFlow(self.action_space/2, flows, flow_type=flow_type)
-    else:
-        self.flows = NormalisingFlow(self.action_space, flows, flow_type=flow_type)
+    # if self.new_architecture:
+    #     self.flows_base = NormalisingFlow(self.action_space/2, flows, flow_type=flow_type)
+    #     self.flows_arm = NormalisingFlow(self.action_space/2, flows, flow_type=flow_type)
+    # else:
+    self.flows = NormalisingFlow(self.action_space, flows, flow_type=flow_type)
 
   def forward(self, state, log_prob=False, deterministic=False):
     if len(self.obs_space) > 1:
@@ -134,33 +132,41 @@ class SoftActor(nn.Module):
         if self.new_architecture:
             x = F.tanh(self.fc1(state))
             x = F.tanh(self.fc2(x))
-            policy_base = self.fc3(x)
-            policy_mean_base, policy_log_std_base = policy_base.view(-1,(self.action_space)).chunk(2,dim=1)
-            x = F.tanh(self.fc4(torch.cat((policy_base.view(-1,self.action_space),x.view(-1,self.hidden_size)),dim=1)))
-            x = self.fc5(x)
-            policy_mean_arm, policy_log_std_arm = x.view(-1,(self.action_space)).chunk(2,dim=1)
+            gate = F.sigmoid(self.fc3(x)).view(-1,2)
+            policy = self.fc4(x).view(-1,self.action_space*2)
+            policy[:,:3] = torch.matmul(policy[:,:3].clone().view(-1,3,1), gate[:,0].view(-1,1,1)).view(-1,3)
+            policy[:,3:8] = torch.matmul(policy[:,3:8].clone().view(-1,5,1), gate[:,1].view(-1,1,1)).view(-1,5)
+            policy[:,8:11] = torch.matmul(policy[:,8:11].clone().view(-1,3,1), gate[:,0].view(-1,1,1)).view(-1,3)
+            policy[:,11:] = torch.matmul(policy[:,11:].clone().view(-1,5,1), gate[:,1].view(-1,1,1)).view(-1,5)
 
-            policy_log_std_base = torch.clamp(policy_log_std_base, min=self.log_std_min, max=self.log_std_max)
-            policy_log_std_arm = torch.clamp(policy_log_std_arm, min=self.log_std_min, max=self.log_std_max)
+            policy_mean, policy_log_std = policy.chunk(2,dim=1)
 
-            base_distribution_base = Normal(policy_mean_base, policy_log_std_base.exp())
-            base_distribution_arm = Normal(policy_mean_arm, policy_log_std_arm.exp())
+            # policy_mean_base, policy_log_std_base = policy_base.view(-1,(self.action_space)).chunk(2,dim=1)
+            # x = F.tanh(self.fc4(torch.cat((policy_base.view(-1,self.action_space),x.view(-1,self.hidden_size)),dim=1)))
+            # x = self.fc5(x)
+            # policy_mean_arm, policy_log_std_arm = x.view(-1,(self.action_space)).chunk(2,dim=1)
 
-            action_base = base_distribution_base.mean if deterministic else base_distribution_base.rsample()
-            action_arm = base_distribution_arm.mean if deterministic else base_distribution_arm.rsample()
+            # policy_log_std_base = torch.clamp(policy_log_std_base, min=self.log_std_min, max=self.log_std_max)
+            # policy_log_std_arm = torch.clamp(policy_log_std_arm, min=self.log_std_min, max=self.log_std_max)
 
-            log_p_base = base_distribution_base.log_prob(action_base).sum(dim=1) if log_prob else None
-            log_p_arm = base_distribution_arm.log_prob(action_arm).sum(dim=1) if log_prob else None
+            # base_distribution_base = Normal(policy_mean_base, policy_log_std_base.exp())
+            # base_distribution_arm = Normal(policy_mean_arm, policy_log_std_arm.exp())
 
-            action_base, log_p_base = self.flows_base(action_base, log_p_base)
-            action_arm, log_p_arm = self.flows_arm(action_arm, log_p_arm)
+            # action_base = base_distribution_base.mean if deterministic else base_distribution_base.rsample()
+            # action_arm = base_distribution_arm.mean if deterministic else base_distribution_arm.rsample()
 
-            action = torch.cat((action_base,action_arm), dim=1)
-            if log_prob:
-                log_p = (log_p_base + log_p_arm)/2
-            else:
-                log_p = None
-            return action, log_p
+            # log_p_base = base_distribution_base.log_prob(action_base).sum(dim=1) if log_prob else None
+            # log_p_arm = base_distribution_arm.log_prob(action_arm).sum(dim=1) if log_prob else None
+
+            # action_base, log_p_base = self.flows_base(action_base, log_p_base)
+            # action_arm, log_p_arm = self.flows_arm(action_arm, log_p_arm)
+
+            # action = torch.cat((action_base,action_arm), dim=1)
+            # if log_prob:
+                # log_p = (log_p_base + log_p_arm)/2
+            # else:
+                # log_p = None
+            # return action, log_p
         else:
             policy_mean, policy_log_std = self.policy(state).view(-1,self.action_space*2).chunk(2,dim=1)
 
