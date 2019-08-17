@@ -17,16 +17,19 @@ class youBotEnv(object):
         self.pr.launch(SCENE_FILE,headless=True)
         self.pr.start()
 
-        if scene_name != 'youbot_navig.ttt':
+        if scene_name != 'youbot_navig2.ttt':
             home_dir = os.path.expanduser('~')
             os.chdir(join(home_dir,'robotics_drl'))
             self.pr.import_model('youbot.ttm')
 
         # Vision sensor handles
         self.camera_top = VisionSensor('Vision_sensor')
+        self.camera_top.set_render_mode(RenderMode.OPENGL3)
+        self.camera_top.set_resolution([256,256])
+
         self.camera_arm = VisionSensor('Vision_sensor1')
         self.camera_arm.set_render_mode(RenderMode.OPENGL3)
-        self.camera_arm.set_resolution([128,128])
+        self.camera_arm.set_resolution([512,512])
 
         self.reward_dense = reward_dense
         self.reward_termination = 1 if self.reward_dense else 0

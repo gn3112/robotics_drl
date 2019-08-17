@@ -272,17 +272,14 @@ def apply_domain_rand(floor, camera, lights, walls, ceiling, objects, env):
     # texture_id, texture_object = _get_texture(env)
     # texture_objects.append(texture_object)
     # target.set_texture(texture = texture_id, mapping_mode = TextureMappingMode.CUBE)
-
     texture_id, texture_object = _get_texture(env)
     texture_objects.append(texture_object)
     floor.set_texture(texture = texture_id, mapping_mode = TextureMappingMode.PLANE, interpolate=True, decal_mode=False, repeat_along_u=True,
                     repeat_along_v=True, uv_scaling=[10,10])
-
     texture_id, texture_object = _get_texture(env)
     texture_objects.append(texture_object)
     ceiling.set_texture(texture = texture_id, mapping_mode = TextureMappingMode.PLANE, interpolate=True, decal_mode=False, repeat_along_u=True,
                     repeat_along_v=True, uv_scaling=[10,10])
-
     texture_id, texture_object = _get_texture(env)
     texture_objects.append(texture_object)
     for j in walls:
@@ -291,18 +288,16 @@ def apply_domain_rand(floor, camera, lights, walls, ceiling, objects, env):
 
     for j in objects:
         texture_id, texture_object = _get_texture(env)
-        color = [random() for _ in range(3)]
         texture_objects.append(texture_object)
         for i in j:
+            color = [random() for _ in range(3)]
             i.set_color(color)
-            i.set_texture(texture = texture_id, mapping_mode = TextureMappingMode.PLANE, decal_mode=False)
+            i.set_texture(texture = texture_id, mapping_mode = TextureMappingMode.PLANE, decal_mode=False, interpolate=True)
             color_rgb = i.get_color()
             h, l, s = colorsys.rgb_to_hls(color_rgb[0],color_rgb[1],color_rgb[2])
             r, g, b = colorsys.hls_to_rgb(h, l, s + 0.2)
             i.set_color([r,g,b])
-            env.pr.step()
-
-    env.pr.step()
+            #env.pr.step()
 
     # Lights
     light_pos = [uniform(-2,2) for _ in range(2)]
@@ -312,9 +307,7 @@ def apply_domain_rand(floor, camera, lights, walls, ceiling, objects, env):
     camera_pos = np.array(camera.get_position())
     camera_pos = camera_pos + np.array([uniform(-0.05,0.05) for _ in range(3)])
     camera.set_position(camera_pos.tolist())
-
     env.pr.step()
-
     return texture_objects
 
 def remove_textures(floor, walls, ceiling, objects, env):
@@ -371,10 +364,11 @@ def main():
     #     os.mkdir('/home/georges/robotics_drl/data/rcan_data')
     area = 5**2
     objects_per_m2 = args.obj_m2
-    n_samples = 3000
+    n_samples = 600
     l_ep = args.samples_scene
 
     env = youBotAll(scene_name= 'scene1.ttt' if args.boundary == 5 else 'scene1_5x5.ttt', boundary=args.boundary)
+    env.pr.set_simulation_timestep(0.1)
 
     n_objects = int(round(area * objects_per_m2))//2
     env.target_base.set_renderable(0) # Add a cube?
@@ -398,7 +392,6 @@ def main():
     # Store some position in env then apply domain rand instead of set pos then rand then can
     time_start = time.time()
     for scene_no in range(n_samples//l_ep):
-        start = time.time()
         walls = create_random_scene(args.n_walls, args.boundary)
         ceiling.set_position([0,0] + [uniform(2.5,3)])
         walls = walls[0] + walls[1] + perm_walls
@@ -420,9 +413,11 @@ def main():
         [j.remove() for j in texture_objects]
         lights.set_position([0,0,0])
         camera.set_position(camera_pos, relative_to=env.mobile_base)
-
         for _ in range(150): env.pr.step()
-        print(time.time()-start)
+
+        for obj in objects_resp:
+            obj.set_dynamic(0)
+
         for sample_scene_no in range(l_ep):
             while True:
                 x, y, orient = env.rand_bound()
@@ -437,7 +432,6 @@ def main():
             env.pr.step()
 
             for rand_active in range(2):
-                start = time.time()
                 rand_active = not rand_active
                 if rand_active:
                     texture_objects = apply_domain_rand(floor, camera,
@@ -448,7 +442,6 @@ def main():
 
                 for _ in range(5): env.pr.step()
                 save_sample(rand_active, camera, steps+args.img_n, 'rcan_data')
-                print(time.time()-start)
             [j.remove() for j in texture_objects]
 
             steps += 1
