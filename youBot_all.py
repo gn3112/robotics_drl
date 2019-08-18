@@ -37,11 +37,11 @@ class youBotAll(youBotArm, youBotBase):
             if self.demonstration_mode:
                 self.action = np.concatenate((dem_action_base, dem_action_arm), axis=0).tolist()
 
-            self.prev_tip_pos = self.tip.get_position()
-
             pos_2d_prev = self.mobile_base.get_2d_pose()
             self.pr.step()
             pos_2d_next = self.mobile_base.get_2d_pose()
+
+            self.prev_tip_pos = self.tip.get_position()
 
             for i in range(2):
                 self.xy_vel[i] = ((pos_2d_next[i] - pos_2d_prev[i]) / 0.05)
@@ -63,9 +63,11 @@ class youBotAll(youBotArm, youBotBase):
     def reset(self):
         self.pr.set_configuration_tree(self.config_tree) # youBot model deteriorates over time so reset all dynamics at each new episode
 
-        self._reset_target_position(random_=True)
+        # youBotArm._reset_target_position(self, random_=False, position=[-0.5,0,0.3])
+        self._reset_target_position(random_=False)
         self._reset_base_position(random_=True)
-        self._reset_arm(random_=False)
+        # self._reset_base_position(random_=False)
+        self._reset_arm(random_=True)
         self.pr.step()
 
         self.prev_tip_pos = np.array(self.tip.get_position())
@@ -89,11 +91,11 @@ class youBotAll(youBotArm, youBotBase):
         #    self.done = True
         #    reward = -3
         else:
-            reward = -dist_ee_target/5 if self.reward_dense else -1
+            reward = -dist_ee_target/5 if self.reward_dense else 0
 
         return reward, self.done
 
-    def _reset_target_position(self,random_=False, position=[0.6,0.6,0.3]):
+    def _reset_target_position(self,random_=False, position=[-1.15,0,0.325]):
         if random_:
             x_T,y_T, _ = self.rand_bound()
             z_T = random.uniform(0.2,0.4)
