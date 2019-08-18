@@ -16,6 +16,7 @@ class youBotEnv(object):
         SCENE_FILE = join(dirname(abspath(__file__)), scene_name)
         self.pr.launch(SCENE_FILE,headless=True)
         self.pr.start()
+        self.pr.set_simulation_timestep(0.05)
 
         if scene_name != 'youbot_navig2.ttt':
             home_dir = os.path.expanduser('~')
