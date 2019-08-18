@@ -5,7 +5,7 @@ from torch import optim
 from torchvision import transforms as T
 from PIL import Image
 from tqdm import tqdm
-from models import Critic, SoftActor, create_target_network, update_target_network
+from models import Critic, SoftActor, SoftActorFork, create_target_network, update_target_network
 import logz
 import inspect
 import time
@@ -77,13 +77,13 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     epsilon = 0.0001 #0.1
     epsilon_d = 0.3 #0.3
     weights = 1 #1
-    lambda_ac = 0.7 #0.7
-    lambda_bc = 0.3 #0.4
+    lambda_ac = 0.85 #0.7
+    lambda_bc = 0.2 #0.4
 
     setup_logger(logdir, locals())
     ENV = __import__(ENV)
     if ARM and BASE:
-        env = ENV.youBotAll('youbot_navig.ttt', obs_lowdim=OBSERVATION_LOW, rpa=RPA, reward_dense=REWARD_DENSE, boundary=1)
+        env = ENV.youBotAll('youbot_navig2.ttt', obs_lowdim=OBSERVATION_LOW, rpa=RPA, reward_dense=REWARD_DENSE, boundary=1)
     elif ARM:
         env = ENV.youBotArm('youbot_navig.ttt', obs_lowdim=OBSERVATION_LOW, rpa=RPA, reward_dense=REWARD_DENSE)
     elif BASE:
@@ -93,7 +93,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     obs_space = env.observation_space()
     step_limit = env.step_limit()
 
-    actor = SoftActor(HIDDEN_SIZE, action_space, obs_space, flow_type=FLOW_TYPE, flows=FLOWS, new_architecture=True).float().to(device)
+    actor = SoftActorFork(HIDDEN_SIZE, action_space, obs_space, flow_type=FLOW_TYPE, flows=FLOWS).float().to(device)
     critic_1 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True).float().to(device)
     critic_2 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True).float().to(device)
     actor.apply(weights_init)
@@ -155,7 +155,6 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             # Execute a in the environment and observe next state s', reward r, and done signal d to indicate whether s' is terminal
             next_state, reward, done = env.step(action.squeeze(dim=0).cpu().tolist())
             next_state = next_state.float().to(device)
-
             # Store (s, a, r, s', d) in replay buffer D
             if PRIORITIZE_REPLAY:
                 D.add(state.cpu().tolist(), action.cpu().squeeze().tolist(), reward, next_state.cpu().tolist(), done)
@@ -174,123 +173,125 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                     success += 1
 
         if step > UPDATE_START and step % UPDATE_INTERVAL == 0:
+            for _ in range(2):
+                # Randomly sample a batch of transitions B = {(s, a, r, s', d)} from D
+                if PRIORITIZE_REPLAY:
+                    state_batch, action_batch, reward_batch, state_next_batch, done_batch, weights_pr, idxes  = D.sample(BATCH_SIZE, BETA)
+                    state_batch = torch.from_numpy(state_batch).float().to(device)
+                    action_batch = torch.from_numpy(action_batch).float().to(device)
+                    reward_batch = torch.from_numpy(reward_batch).float().to(device)
+                    state_next_batch = torch.from_numpy(state_next_batch).float().to(device)
+                    done_batch = torch.from_numpy(done_batch).float().to(device)
+                    weights_pr = torch.from_numpy(weights_pr).float().to(device)
 
-            # Randomly sample a batch of transitions B = {(s, a, r, s', d)} from D
-            if PRIORITIZE_REPLAY:
-                state_batch, action_batch, reward_batch, state_next_batch, done_batch, weights_pr, idxes  = D.sample(BATCH_SIZE, BETA)
-                state_batch = torch.from_numpy(state_batch).float().to(device)
-                action_batch = torch.from_numpy(action_batch).float().to(device)
-                reward_batch = torch.from_numpy(reward_batch).float().to(device)
-                state_next_batch = torch.from_numpy(state_next_batch).float().to(device)
-                done_batch = torch.from_numpy(done_batch).float().to(device)
-                weights_pr = torch.from_numpy(weights_pr).float().to(device)
-
-                batch = {'state':state_batch,
-                         'action':action_batch,
-                         'reward':reward_batch,
-                         'next_state':state_next_batch,
-                         'done':done_batch
-                         }
-            else:
-                batch = random.sample(D, BATCH_SIZE)
-                state_batch = []
-                action_batch = []
-                reward_batch =  []
-                state_next_batch = []
-                done_batch = []
-                for d in batch:
-                    state_batch.append(d['state'])
-                    action_batch.append(d['action'])
-                    reward_batch.append(d['reward'])
-                    state_next_batch.append(d['next_state'])
-                    done_batch.append(d['done'])
-
-                batch = {'state':torch.cat(state_batch,dim=0),
-                        'action':torch.cat(action_batch,dim=0),
-                        'reward':torch.cat(reward_batch,dim=0),
-                        'next_state':torch.cat(state_next_batch,dim=0),
-                        'done':torch.cat(done_batch,dim=0)
-                        }
-
-            action, log_prob = actor(batch['state'],log_prob=True, deterministic=False)
-
-            #Automatic entropy tuning
-            alpha_loss = -(log_alpha.float() * (log_prob + target_entropy).float().detach()).mean()
-            alpha_optimizer.zero_grad()
-            alpha_loss.backward()
-            alpha_optimizer.step()
-            alpha = log_alpha.exp()
-            weighted_sample_entropy = (alpha.float() * log_prob).view(-1,1)
-
-            # Compute targets for Q and V functions
-            if VALUE_FNC:
-                y_q = batch['reward'] + DISCOUNT * (1 - batch['done']) * target_value_critic(batch['next_state'])
-                y_v = torch.min(critic_1(batch['state'], action.detach()), critic_2(batch['state'], action.detach())) - weighted_sample_entropy.detach()
-            else:
-                # No value function network
-                next_actions, next_log_prob = actor(batch['next_state'],log_prob=True, deterministic=False)
-                target_qs = torch.min(target_critic_1(batch['next_state'], next_actions), target_critic_2(batch['next_state'], next_actions)) - alpha * next_log_prob
-                y_q = batch['reward'] + DISCOUNT * (1 - batch['done']) * target_qs.detach()
-
-            td_error_critic1 = critic_1(batch['state'], batch['action']) - y_q
-            td_error_critic2 = critic_2(batch['state'], batch['action']) - y_q
-
-            # Compute priorities, taking demonstrations into account
-            if PRIORITIZE_REPLAY:
-                td_error = weights_pr * (td_error_critic1 + td_error_critic2).mean()
-                behavior_loss = torch.tensor([]).to(device)
-                priorities = torch.abs(td_error).tolist()
-                i = 0
-                count_dem = 0
-                for idx in idxes:
-                    priorities[i] += epsilon
-                    if idx < n_demonstrations:
-                        count_dem += 1
-                        if BEHAVIOR_CLONING:
-                            actor_action_dem = batch['action'][i]
-                            actual_action_dem, _ = actor(batch['state'][i], log_prob=False, deterministic=True)
-
-                            # q_value_actor = (critic_1(batch['state'][i], batch['action'][i]) + critic_2(batch['state'][i], batch['action'][i]))/2
-                            # q_value_actual = (critic_1(batch['state'][i], actual_action_dem) + critic_2(batch['state'][i], actual_action_dem))/2
-                            # if q_value_actor > q_value_actual: # Q Filter
-                            behavior_loss = torch.cat((behavior_loss,F.mse_loss(actor_action_dem, actual_action_dem.squeeze()).unsqueeze(dim=0)), dim=0)
-                        priorities[i] += epsilon_d
-                    i += 1
-                if not behavior_loss.nelement() == 0:
-                    behavior_loss = behavior_loss.mean()
+                    batch = {'state':state_batch,
+                             'action':action_batch,
+                             'reward':reward_batch,
+                             'next_state':state_next_batch,
+                             'done':done_batch
+                             }
                 else:
-                    behavior_loss = 0
+                    batch = random.sample(D, BATCH_SIZE)
+                    state_batch = []
+                    action_batch = []
+                    reward_batch =  []
+                    state_next_batch = []
+                    done_batch = []
+                    for d in batch:
+                        state_batch.append(d['state'])
+                        action_batch.append(d['action'])
+                        reward_batch.append(d['reward'])
+                        state_next_batch.append(d['next_state'])
+                        done_batch.append(d['done'])
 
-                D.update_priorities(idxes, priorities)
+                    batch = {'state':torch.cat(state_batch,dim=0),
+                            'action':torch.cat(action_batch,dim=0),
+                            'reward':torch.cat(reward_batch,dim=0),
+                            'next_state':torch.cat(state_next_batch,dim=0),
+                            'done':torch.cat(done_batch,dim=0)
+                            }
 
-            q_loss = (td_error_critic1).pow(2).mean() + (td_error_critic2).pow(2).mean()
-            # q_loss = (F.mse_loss(critic_1(batch['state'], batch['action']), y_q) + F.mse_loss(critic_2(batch['state'], batch['action']), y_q)).mean()
-            critics_optimiser.zero_grad()
-            q_loss.backward()
-            critics_optimiser.step()
+                action, log_prob = actor(batch['state'],log_prob=True, deterministic=False)
 
-            # Update V-function by one step of gradient descent
-            if VALUE_FNC:
-                v_loss = (value_critic(batch['state']) - y_v).pow(2).mean().to(device)
+                #Automatic entropy tuning
+                alpha_loss = -(log_alpha.float() * (log_prob + target_entropy).float().detach()).mean()
+                alpha_optimizer.zero_grad()
+                alpha_loss.backward()
+                alpha_optimizer.step()
+                alpha = log_alpha.exp()
+                weighted_sample_entropy = (alpha.float() * log_prob).view(-1,1)
 
-                value_critic_optimiser.zero_grad()
-                v_loss.backward()
-                value_critic_optimiser.step()
+                # Compute targets for Q and V functions
+                if VALUE_FNC:
+                    y_q = batch['reward'] + DISCOUNT * (1 - batch['done']) * target_value_critic(batch['next_state'])
+                    y_v = torch.min(critic_1(batch['state'], action.detach()), critic_2(batch['state'], action.detach())) - weighted_sample_entropy.detach()
+                else:
+                    # No value function network
+                    next_actions, next_log_prob = actor(batch['next_state'],log_prob=True, deterministic=False)
+                    target_qs = torch.min(target_critic_1(batch['next_state'], next_actions), target_critic_2(batch['next_state'], next_actions)) - alpha * next_log_prob
+                    y_q = batch['reward'] + DISCOUNT * (1 - batch['done']) * target_qs.detach()
 
-            # Update policy by one step of gradient ascent
+                td_error_critic1 = critic_1(batch['state'], batch['action']) - y_q
+                td_error_critic2 = critic_2(batch['state'], batch['action']) - y_q
 
-            new_qs = torch.min(critic_1(batch["state"], action),critic_2(batch["state"], action))
-            policy_loss = lambda_ac * (weighted_sample_entropy.view(-1) - new_qs).mean().to(device) + lambda_bc * behavior_loss
-            actor_optimiser.zero_grad()
-            policy_loss.backward()
-            actor_optimiser.step()
+                # Compute priorities, taking demonstrations into account
+                if PRIORITIZE_REPLAY:
+                    td_error = weights_pr * (td_error_critic1 + td_error_critic2).mean()
+                    behavior_loss = torch.tensor([]).to(device)
+                    priorities = torch.abs(td_error).tolist()
+                    i = 0
+                    count_dem = 0
+                    for idx in idxes:
+                        priorities[i] += epsilon
+                        if idx < n_demonstrations:
+                            count_dem += 1
+                            if BEHAVIOR_CLONING:
+                                actor_action_dem = batch['action'][i]
+                                actual_action_dem, _ = actor(batch['state'][i], log_prob=False, deterministic=True)
 
-            # Update target value network
-            if VALUE_FNC:
-                update_target_network(value_critic, target_value_critic, POLYAK_FACTOR)
-            else:
-                update_target_network(critic_1, target_critic_1, POLYAK_FACTOR)
-                update_target_network(critic_2, target_critic_2, POLYAK_FACTOR)
+                                # q_value_actor = (critic_1(batch['state'][i], batch['action'][i]) + critic_2(batch['state'][i], batch['action'][i]))/2
+                                # q_value_actual = (critic_1(batch['state'][i], actual_action_dem) + critic_2(batch['state'][i], actual_action_dem))/2
+                                # if q_value_actor > q_value_actual: # Q Filter
+                                behavior_loss = torch.cat((behavior_loss,F.mse_loss(actor_action_dem, actual_action_dem.squeeze()).unsqueeze(dim=0)), dim=0)
+                            priorities[i] += epsilon_d
+                        i += 1
+                    if not behavior_loss.nelement() == 0:
+                        behavior_loss = behavior_loss.mean()
+                    else:
+                        behavior_loss = 0
+
+                    D.update_priorities(idxes, priorities)
+
+                lambda_bc = (count_dem/BATCH_SIZE) / 5
+
+                q_loss = (td_error_critic1).pow(2).mean() + (td_error_critic2).pow(2).mean()
+                # q_loss = (F.mse_loss(critic_1(batch['state'], batch['action']), y_q) + F.mse_loss(critic_2(batch['state'], batch['action']), y_q)).mean()
+                critics_optimiser.zero_grad()
+                q_loss.backward()
+                critics_optimiser.step()
+
+                # Update V-function by one step of gradient descent
+                if VALUE_FNC:
+                    v_loss = (value_critic(batch['state']) - y_v).pow(2).mean().to(device)
+
+                    value_critic_optimiser.zero_grad()
+                    v_loss.backward()
+                    value_critic_optimiser.step()
+
+                # Update policy by one step of gradient ascent
+
+                new_qs = torch.min(critic_1(batch["state"], action),critic_2(batch["state"], action))
+                policy_loss = lambda_ac * (weighted_sample_entropy.view(-1) - new_qs).mean().to(device) + lambda_bc * behavior_loss
+                actor_optimiser.zero_grad()
+                policy_loss.backward()
+                actor_optimiser.step()
+
+                # Update target value network
+                if VALUE_FNC:
+                    update_target_network(value_critic, target_value_critic, POLYAK_FACTOR)
+                else:
+                    update_target_network(critic_1, target_critic_1, POLYAK_FACTOR)
+                    update_target_network(critic_2, target_critic_2, POLYAK_FACTOR)
 
         # Continues to sample transitions till episode is done and evaluation is on
         if step > UPDATE_START and step % TEST_INTERVAL == 0: eval_c = True
