@@ -81,101 +81,160 @@ class TanhNormal(Distribution):
 
 
 class SoftActor(nn.Module):
-  def __init__(self, hidden_size, action_space, obs_space, flow_type='radial', flows=0, new_architecture=False):
+  def __init__(self, hidden_size, action_space, obs_space, flow_type='radial', flows=0):
     super().__init__()
     self.hidden_size = hidden_size
     self.action_space = action_space
     self.obs_space = obs_space
-    self.new_architecture = new_architecture
     self.log_std_min, self.log_std_max = -20, 2  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
-    if len(self.obs_space) > 1:
-        self.conv1 = nn.Conv2d(4,16,kernel_size=4, stride=3) # Check here for dim (frame staking)
-        self.conv2 = nn.Conv2d(16,32,kernel_size=4, stride=3)
-        self.conv3 = nn.Conv2d(32,32,kernel_size=4, stride=3)
 
-        def conv2d_size_out(size, kernel_size = 4, stride = 3):
-            return (size - (kernel_size - 1) - 1) // stride + 1
-
-        conv_h = conv2d_size_out(conv2d_size_out(conv2d_size_out(64)))
-        conv_w = conv2d_size_out(conv2d_size_out(conv2d_size_out(64)))
-
-        self.fc1 = nn.Linear(conv_h*conv_w*32,hidden_size)
-        self.fc2 = nn.Linear(hidden_size,self.action_space*2)
-    else:
-        if new_architecture:
-            self.fc1 = nn.Linear(self.obs_space[0], hidden_size)
-            self.fc2 = nn.Linear(hidden_size, hidden_size)
-            self.fc3 = nn.Linear(hidden_size, 2)
-            self.fc4 = nn.Linear(hidden_size, self.action_space * 2)
-        else:
-            layers = [nn.Linear(self.obs_space[0], hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, self.action_space*2)] # nn.Softmax(dim=0))
-            self.policy = nn.Sequential(*layers)
+    layers = [nn.Linear(self.obs_space[0], hidden_size), nn.Tanh(), nn.Linear(hidden_size, hidden_size), nn.Tanh(), nn.Linear(hidden_size, self.action_space*2)] # nn.Softmax(dim=0))
+    self.policy = nn.Sequential(*layers)
 
     flows, flow_type = (1, 'tanh') if flows == 0 else (flows, flow_type)
-
-    # if self.new_architecture:
-    #     self.flows_base = NormalisingFlow(self.action_space/2, flows, flow_type=flow_type)
-    #     self.flows_arm = NormalisingFlow(self.action_space/2, flows, flow_type=flow_type)
-    # else:
     self.flows = NormalisingFlow(self.action_space, flows, flow_type=flow_type)
 
   def forward(self, state, log_prob=False, deterministic=False):
-    if len(self.obs_space) > 1:
-        #torchvision.utils.save_image(state.view(4,64,64)[0,:,:],"sac_image_network.png",normalize=True)
-        x = F.relu((self.conv1(state.view(-1,4,64,64))))
-        x = F.relu((self.conv2(x)))
-        x = F.relu((self.conv3(x)))
-        x = F.relu(self.fc1(x.view(x.size(0),-1)))
-        x = (self.fc2(x))
-        policy_mean, policy_log_std = x.view(-1,self.action_space*2).chunk(2,dim=1)
-    else:
-        if self.new_architecture:
-            x = F.tanh(self.fc1(state))
-            x = F.tanh(self.fc2(x))
-            gate = F.sigmoid(self.fc3(x)).view(-1,2)
-            policy = self.fc4(x).view(-1,self.action_space*2)
-            policy[:,:3] = torch.matmul(policy[:,:3].clone().view(-1,3,1), gate[:,0].view(-1,1,1)).view(-1,3)
-            policy[:,3:8] = torch.matmul(policy[:,3:8].clone().view(-1,5,1), gate[:,1].view(-1,1,1)).view(-1,5)
-            policy[:,8:11] = torch.matmul(policy[:,8:11].clone().view(-1,3,1), gate[:,0].view(-1,1,1)).view(-1,3)
-            policy[:,11:] = torch.matmul(policy[:,11:].clone().view(-1,5,1), gate[:,1].view(-1,1,1)).view(-1,5)
-
-            policy_mean, policy_log_std = policy.chunk(2,dim=1)
-
-            # policy_mean_base, policy_log_std_base = policy_base.view(-1,(self.action_space)).chunk(2,dim=1)
-            # x = F.tanh(self.fc4(torch.cat((policy_base.view(-1,self.action_space),x.view(-1,self.hidden_size)),dim=1)))
-            # x = self.fc5(x)
-            # policy_mean_arm, policy_log_std_arm = x.view(-1,(self.action_space)).chunk(2,dim=1)
-
-            # policy_log_std_base = torch.clamp(policy_log_std_base, min=self.log_std_min, max=self.log_std_max)
-            # policy_log_std_arm = torch.clamp(policy_log_std_arm, min=self.log_std_min, max=self.log_std_max)
-
-            # base_distribution_base = Normal(policy_mean_base, policy_log_std_base.exp())
-            # base_distribution_arm = Normal(policy_mean_arm, policy_log_std_arm.exp())
-
-            # action_base = base_distribution_base.mean if deterministic else base_distribution_base.rsample()
-            # action_arm = base_distribution_arm.mean if deterministic else base_distribution_arm.rsample()
-
-            # log_p_base = base_distribution_base.log_prob(action_base).sum(dim=1) if log_prob else None
-            # log_p_arm = base_distribution_arm.log_prob(action_arm).sum(dim=1) if log_prob else None
-
-            # action_base, log_p_base = self.flows_base(action_base, log_p_base)
-            # action_arm, log_p_arm = self.flows_arm(action_arm, log_p_arm)
-
-            # action = torch.cat((action_base,action_arm), dim=1)
-            # if log_prob:
-                # log_p = (log_p_base + log_p_arm)/2
-            # else:
-                # log_p = None
-            # return action, log_p
-        else:
-            policy_mean, policy_log_std = self.policy(state).view(-1,self.action_space*2).chunk(2,dim=1)
-
+    policy_mean, policy_log_std = self.policy(state).view(-1,self.action_space*2).chunk(2,dim=1)
     policy_log_std = torch.clamp(policy_log_std, min=self.log_std_min, max=self.log_std_max)
     base_distribution = Normal(policy_mean, policy_log_std.exp())
     action = base_distribution.mean if deterministic else base_distribution.rsample()
     log_p = base_distribution.log_prob(action).sum(dim=1) if log_prob else None
     action, log_p = self.flows(action, log_p)
     return action, log_p
+
+class SoftActorConv(nn.Module):
+  def __init__(self, hidden_size, action_space, flow_type='radial', flows=0):
+    super().__init__()
+    self.hidden_size = hidden_size
+    self.action_space = action_space
+    self.log_std_min, self.log_std_max = -20, 2  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
+    self.conv1 = nn.Conv2d(4,16,kernel_size=4, stride=3) # Check here for dim (frame staking)
+    self.conv2 = nn.Conv2d(16,32,kernel_size=4, stride=3)
+    self.conv3 = nn.Conv2d(32,32,kernel_size=4, stride=3)
+
+    def conv2d_size_out(size, kernel_size = 4, stride = 3):
+        return (size - (kernel_size - 1) - 1) // stride + 1
+
+    conv_h = conv2d_size_out(conv2d_size_out(conv2d_size_out(64)))
+    conv_w = conv2d_size_out(conv2d_size_out(conv2d_size_out(64)))
+
+    self.fc1 = nn.Linear(conv_h*conv_w*32,hidden_size)
+    self.fc2 = nn.Linear(hidden_size,self.action_space*2)
+
+    self.flows = NormalisingFlow(self.action_space, flows, flow_type=flow_type)
+
+  def forward(self, state, log_prob=False, deterministic=False):
+    #torchvision.utils.save_image(state.view(4,64,64)[0,:,:],"sac_image_network.png",normalize=True)
+    x = F.relu((self.conv1(state.view(-1,4,64,64))))
+    x = F.relu((self.conv2(x)))
+    x = F.relu((self.conv3(x)))
+    x = F.relu(self.fc1(x.view(x.size(0),-1)))
+    x = (self.fc2(x))
+    policy_mean, policy_log_std = x.view(-1,self.action_space*2).chunk(2,dim=1)
+    policy_log_std = torch.clamp(policy_log_std, min=self.log_std_min, max=self.log_std_max)
+    base_distribution = Normal(policy_mean, policy_log_std.exp())
+    action = base_distribution.mean if deterministic else base_distribution.rsample()
+    log_p = base_distribution.log_prob(action).sum(dim=1) if log_prob else None
+    action, log_p = self.flows(action, log_p)
+    return action, log_p
+
+class SoftActorGated(nn.Module):
+  def __init__(self, hidden_size, action_space, flow_type='radial', flows=0):
+    super().__init__()
+    self.hidden_size = hidden_size
+    self.action_space = action_space
+    self.log_std_min, self.log_std_max = -20, 2  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
+
+    self.fc1 = nn.Linear(self.obs_space[0], hidden_size)
+    self.fc2 = nn.Linear(hidden_size, hidden_size)
+    self.fc3 = nn.Linear(hidden_size, 2)
+    self.fc4 = nn.Linear(hidden_size, self.action_space * 2)
+
+    flows, flow_type = (1, 'tanh') if flows == 0 else (flows, flow_type)
+    self.flows = NormalisingFlow(self.action_space, flows, flow_type=flow_type)
+
+  def forward(self, state, log_prob=False, deterministic=False):
+    x = F.tanh(self.fc1(state))
+    x = F.tanh(self.fc2(x))
+    gate = F.sigmoid(self.fc3(x)).view(-1,2) #Try 1-p with 1
+    policy = self.fc4(x).view(-1,self.action_space*2)
+    policy[:,:3] = torch.matmul(policy[:,:3].clone().view(-1,3,1), gate[:,0].view(-1,1,1)).view(-1,3)
+    policy[:,3:8] = torch.matmul(policy[:,3:8].clone().view(-1,5,1), gate[:,1].view(-1,1,1)).view(-1,5)
+    policy[:,8:11] = torch.matmul(policy[:,8:11].clone().view(-1,3,1), gate[:,0].view(-1,1,1)).view(-1,3)
+    policy[:,11:] = torch.matmul(policy[:,11:].clone().view(-1,5,1), gate[:,1].view(-1,1,1)).view(-1,5)
+
+    policy_mean, policy_log_std = policy.chunk(2,dim=1)
+    policy_log_std = torch.clamp(policy_log_std, min=self.log_std_min, max=self.log_std_max)
+    base_distribution = Normal(policy_mean, policy_log_std.exp())
+    action = base_distribution.mean if deterministic else base_distribution.rsample()
+    log_p = base_distribution.log_prob(action).sum(dim=1) if log_prob else None
+    action, log_p = self.flows(action, log_p)
+    return action, log_p
+
+class SoftActorFork(nn.Module):
+  def __init__(self, hidden_size, action_space, obs_space, flow_type='radial', flows=0):
+    super().__init__()
+    self.hidden_size = hidden_size
+    self.action_space = action_space
+    self.obs_space = obs_space
+    self.log_std_min, self.log_std_max = -20, 2  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
+
+    self.fc1 = nn.Linear(self.obs_space[0], hidden_size)
+    self.fc2 = nn.Linear(hidden_size, hidden_size)
+    self.fc3 = nn.Linear(hidden_size, 1)
+
+    self.fc4_1 = nn.Linear(hidden_size, hidden_size)
+    self.fc5_1 = nn.Linear(hidden_size, 3 * 2)
+    self.fc4_2 = nn.Linear(hidden_size, hidden_size)
+    self.fc5_2 = nn.Linear(hidden_size, 5 * 2)
+
+    flows, flow_type = (1, 'tanh') if flows == 0 else (flows, flow_type)
+
+    self.flows_base = NormalisingFlow(3, flows, flow_type=flow_type)
+    self.flows_arm = NormalisingFlow(5, flows, flow_type=flow_type)
+
+  def forward(self, state, log_prob=False, deterministic=False):
+    x = F.tanh(self.fc1(state))
+    x = F.tanh(self.fc2(x))
+    gate = F.sigmoid(self.fc3(x)).view(-1,1)
+    device = gate.get_device()
+    neg_gate = torch.tensor([1]).view(-1,1).repeat(gate.size()[0], 1).to(device) - gate
+    x_base = torch.matmul(x.view(-1,x.size()[1],1), gate.view(-1,gate.size(1),1)).view(-1,x.size()[1])
+    x_arm = torch.matmul(x.view(-1,x.size()[1],1), gate.view(-1,neg_gate.size(1),1)).view(-1,x.size()[1])
+
+    x_base = F.tanh(self.fc4_1(x_base))
+    x_arm = F.tanh(self.fc4_2(x_arm))
+
+    x_base = self.fc5_1(x_base)
+    x_arm = self.fc5_2(x_arm)
+
+    policy_mean_base, policy_log_std_base = x_base.view(-1,(3 * 2)).chunk(2,dim=1)
+    policy_mean_arm, policy_log_std_arm = x_arm.view(-1,(5 * 2)).chunk(2,dim=1)
+
+    policy_log_std_base = torch.clamp(policy_log_std_base, min=self.log_std_min, max=self.log_std_max)
+    policy_log_std_arm = torch.clamp(policy_log_std_arm, min=self.log_std_min, max=self.log_std_max)
+
+    base_distribution_base = Normal(policy_mean_base, policy_log_std_base.exp())
+    base_distribution_arm = Normal(policy_mean_arm, policy_log_std_arm.exp())
+
+    action_base = base_distribution_base.mean if deterministic else base_distribution_base.rsample()
+    action_arm = base_distribution_arm.mean if deterministic else base_distribution_arm.rsample()
+
+    log_p_base = base_distribution_base.log_prob(action_base).sum(dim=1) if log_prob else None
+    log_p_arm = base_distribution_arm.log_prob(action_arm).sum(dim=1) if log_prob else None
+
+    action_base, log_p_base = self.flows_base(action_base, log_p_base)
+    action_arm, log_p_arm = self.flows_arm(action_arm, log_p_arm)
+
+    action = torch.cat((action_base,action_arm), dim=1)
+
+    if log_prob:
+        log_p = (log_p_base + log_p_arm)/2
+    else:
+        log_p = None
+    return action, log_p
+
 
 class Critic(nn.Module):
   def __init__(self, hidden_size, output_size, obs_space, action_space, state_action=False, layer_norm=False):
