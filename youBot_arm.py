@@ -40,8 +40,8 @@ class youBotArm(youBotEnv):
         arm_joint_vel = self.arm.get_joint_velocities()
         if self.obs_lowdim:
             targ_vec = np.array(self.target_base.get_position()) - np.array(self.tip.get_position())
-            tip_pos = self.tip.get_position()
-            tip_or = self.tip.get_orientation()
+            tip_pos = self.tip.get_position(relative_to=self.mobile_base)
+            tip_or = self.tip.get_orientation(relative_to=self.mobile_base)
             return None, torch.tensor(np.concatenate((arm_joint_pos, arm_joint_vel, tip_pos, self.action, targ_vec), axis=0)).float() # ADD tip_or when augmenting action space
         else:
             return env.render('arm'), torch.tensor(np.concatenate((arm_joint_pos, arm_joint_vel),axis=0)).float()
@@ -75,26 +75,26 @@ class youBotArm(youBotEnv):
         _, obs = self.get_observation()
         return obs
 
-    def _reset_target_position(self,random_=False, position=[0,0]):
+    def _reset_target_position(self,random_=False, position=[0,0,0.3]):
         if random_:
             x_T = random.uniform(0.1,0.23)
             y_T = random.uniform(-0.1, 0.1)
             z_T = random.uniform(0.2, 0.3)
         else:
-            x_T,y_T = position
-            z_T = 0.3
+            x_T, y_T, z_T = position
 
         self.target_base.set_position([x_T,y_T,z_T])
         self.done = False
 
     def _reset_arm(self, random_=False):
         if random_:
+            x_ref, y_ref = self.mobile_base.get_2d_pose()[:2]
             while True:
                 x = random.uniform(-0.4,0.08)
                 y = random.uniform(-0.2,0.2)
                 z = random.uniform(0.2,0.45)
                 try:
-                    joints_pos = self.arm.solve_ik(position=[x,y,z], euler=[0,0,1.57])
+                    joints_pos = self.arm.solve_ik(position=[x+x_ref,y+y_ref,z], euler=[0,0,1.57])
                 except:
                     continue
 
@@ -123,14 +123,22 @@ class youBotArm(youBotEnv):
 
     def _set_actuation(self, action):
         if not self.demonstration_mode:
-            # scaled_action = np.array(action)*0.01 + np.array(self.prev_tip_pos)
-            # try:
-            #     joint_values_arm = self.arm.solve_ik(position=scaled_action.tolist(), euler=[0,0,1.57])
-            #     self.arm.set_joint_target_positions(joint_values_arm)
-            # except:
-            #     pass
-            scaled_action = np.array(action) * 1.57
-            self.arm.set_joint_target_velocities(scaled_action)
+            z_tip = self.tip.get_position()[-1]
+            if abs(np.sum(action)) < 0.0001 or (z_tip < 0.18 and np.sum(action[1:]) > 0.1 ):
+                self.arm.set_joint_target_velocities([0,0,0,0,0])
+            else:
+                # scaled_action = np.array(action)*0.01 + np.array(self.prev_tip_pos)
+                # try:
+                #     prev_joint_pos = np.array(self.arm.get_joint_positions())
+                #     joint_values_arm = self.arm.solve_ik(position=scaled_action.tolist(), euler=[0,0,1.57])
+                #     diff_joints = (np.array(joint_values_arm) - prev_joint_pos) / 0.05
+                #     # self.arm.set_joint_target_positions(joint_values_arm)
+                #     self.arm.set_joint_target_velocities(diff_joints.tolist())
+                # except:
+                #     pass
+
+                scaled_action = np.array(action) * 1.57
+                self.arm.set_joint_target_velocities(scaled_action)
             return action
         else:
             # tip_pos = np.array(self.tip.get_position())
