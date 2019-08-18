@@ -2,7 +2,7 @@ from youBot_env import youBotEnv
 from pyrep.robots.mobiles.youbot import YouBot as youBot_base
 import numpy as np
 import torch
-from math import sqrt, pi
+from math import sqrt, pi, radians
 import random
 
 class youBotBase(youBotEnv):
@@ -91,7 +91,7 @@ class youBotBase(youBotEnv):
         self.target_base.set_position([x_T,y_T,0.3])
         self.done = False
 
-    def _reset_base_position(self,random_=False, position=[0.5,0.5], orientation=0):
+    def _reset_base_position(self,random_=False, position=[0,0], orientation=radians(90)):
         if random_:
             target_pos = self.target_base.get_position()
 
@@ -131,8 +131,8 @@ class youBotBase(youBotEnv):
         scaled_action = [0,0,0]
         if not self.demonstration_mode:
             for i in range(2):
-                scaled_action[i] = action[i]*4 #unnormalise by multiplying by 0.01 (max) for v=4rad/s
-            scaled_action[2] = action[2]*6 #max v rota = 6 rad/s
+                scaled_action[i] = action[i]*3.5 #unnormalise by multiplying by 0.01 (max) for v=4rad/s
+            scaled_action[2] = action[2]*5 #max v rota = 6 rad/s
 
             # e = np.array(scaled_action)
             # e_P = e
@@ -145,12 +145,12 @@ class youBotBase(youBotEnv):
             # self.prev_error = e
             # self.cumulative_error = self.cumulative_error + e
 
-            self.mobile_base.set_base_angular_velocites(action)
+            self.mobile_base.set_base_angular_velocites(scaled_action)
             return action
         else:
             for i in range(2):
                 # scaled_action[i] = (action[i] * (0.05*0.1/2)) / 0.01
-                scaled_action[i] = action[i] / 4
-            scaled_action[2] = action[2] / 6
+                scaled_action[i] = action[i] / 3.5
+            scaled_action[2] = action[2] / 5
             self.action = scaled_action
             return scaled_action
