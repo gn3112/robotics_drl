@@ -36,7 +36,7 @@ class evaluation_sac(object):
                 while True:
                     action, _ = actor(state.float().to(self.device), log_prob=False, deterministic=True)
                     steps_ep += 1
-                    state, reward, done = self.env.step(action.detach().cpu().squeeze(dim=0))
+                    state, reward, done = self.env.step(action.detach().cpu().squeeze(dim=0).tolist())
                     total_reward += reward
                     img_ep.append(self.env.render())
                     if steps_ep > self.env.step_limit() - 1 or done==True:

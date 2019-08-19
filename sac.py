@@ -173,7 +173,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                     success += 1
 
         if step > UPDATE_START and step % UPDATE_INTERVAL == 0:
-            for _ in range(2):
+            for _ in range(1):
                 # Randomly sample a batch of transitions B = {(s, a, r, s', d)} from D
                 if PRIORITIZE_REPLAY:
                     state_batch, action_batch, reward_batch, state_next_batch, done_batch, weights_pr, idxes  = D.sample(BATCH_SIZE, BETA)
@@ -237,26 +237,26 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 # Compute priorities, taking demonstrations into account
                 if PRIORITIZE_REPLAY:
                     td_error = weights_pr * (td_error_critic1 + td_error_critic2).mean()
-                    behavior_loss = torch.tensor([]).to(device)
+                    action_dem = torch.tensor([]).to(device)
+                    state_dem = torch.tensor([]).to(device)
                     priorities = torch.abs(td_error).tolist()
                     i = 0
                     count_dem = 0
                     for idx in idxes:
                         priorities[i] += epsilon
                         if idx < n_demonstrations:
+                            priorities[i] += epsilon_d
                             count_dem += 1
                             if BEHAVIOR_CLONING:
-                                actor_action_dem = batch['action'][i]
-                                actual_action_dem, _ = actor(batch['state'][i], log_prob=False, deterministic=True)
-
-                                # q_value_actor = (critic_1(batch['state'][i], batch['action'][i]) + critic_2(batch['state'][i], batch['action'][i]))/2
-                                # q_value_actual = (critic_1(batch['state'][i], actual_action_dem) + critic_2(batch['state'][i], actual_action_dem))/2
-                                # if q_value_actor > q_value_actual: # Q Filter
-                                behavior_loss = torch.cat((behavior_loss,F.mse_loss(actor_action_dem, actual_action_dem.squeeze()).unsqueeze(dim=0)), dim=0)
-                            priorities[i] += epsilon_d
+                                action_dem = torch.cat((action_dem, batch['action'][i].view(1,-1)), dim=0)
+                                state_dem = torch.cat((state_dem, batch['state'][i].view(1,-1)), dim=0)
                         i += 1
-                    if not behavior_loss.nelement() == 0:
-                        behavior_loss = behavior_loss.mean()
+                    if not action_dem.nelement() == 0:
+                        actual_action_dem, _ = actor(state_dem, log_prob=False, deterministic=True)
+                        # q_value_actor = (critic_1(batch['state'][i], batch['action'][i]) + critic_2(batch['state'][i], batch['action'][i]))/2
+                        # q_value_actual = (critic_1(batch['state'][i], actual_action_dem) + critic_2(batch['state'][i], actual_action_dem))/2
+                        # if q_value_actor > q_value_actual: # Q Filter
+                        behavior_loss = F.mse_loss(action_dem, actual_action_dem).unsqueeze(dim=0)
                     else:
                         behavior_loss = 0
 

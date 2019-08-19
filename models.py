@@ -199,10 +199,9 @@ class SoftActorFork(nn.Module):
     x = F.tanh(self.fc2(x))
     gate = F.sigmoid(self.fc3(x)).view(-1,1)
     device = gate.get_device()
-    neg_gate = torch.tensor([1]).view(-1,1).repeat(gate.size()[0], 1).to(device) - gate
-    x_base = torch.matmul(x.view(-1,x.size()[1],1), gate.view(-1,gate.size(1),1)).view(-1,x.size()[1])
-    x_arm = torch.matmul(x.view(-1,x.size()[1],1), gate.view(-1,neg_gate.size(1),1)).view(-1,x.size()[1])
-
+    neg_gate = torch.tensor([1.]).view(-1,1).repeat(gate.size()[0], 1).to(device) - gate
+    x_base = torch.matmul(x.view(-1,256,1), gate.view(-1,1,1)).view(-1,256)
+    x_arm = torch.matmul(x.view(-1,256,1), gate.view(-1,1,1)).view(-1,256)
     x_base = F.tanh(self.fc4_1(x_base))
     x_arm = F.tanh(self.fc4_2(x_arm))
 
