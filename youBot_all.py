@@ -15,6 +15,7 @@ class youBotAll(youBotArm, youBotBase):
         self.reward_dense = reward_dense
         self.action_space = 3 + 5
         self.action = [0 for _ in range(self.action_space)]
+        self.prev_action = [0 for _ in range(self.action_space)]
 
         self.arm.set_motor_locked_at_zero_velocity(1)
 
@@ -23,7 +24,8 @@ class youBotAll(youBotArm, youBotBase):
             _, obsArm = youBotArm.get_observation(self)
             _, obsBase = youBotBase.get_observation(self)
             targ_vec = np.array(self.target_base.get_position()) - np.array(self.tip.get_position())
-            return None, torch.tensor(np.concatenate((obsArm[:-11], obsBase[:-10], self.action, targ_vec),axis=0)).float()
+            targ_vec_base = np.array(self.target_base.get_position()[:2]) - np.array(self.mobile_base.get_2d_pose()[:2])
+            return None, torch.tensor(np.concatenate((obsArm[:-11], obsBase[:-10], self.action, targ_vec, targ_vec_base),axis=0)).float()
         else:
             return env.render('arm'), torch.tensor(np.concatenate((obsArm[:16], obsBase[:6], self.action),axis=0)).float()
 
@@ -56,6 +58,7 @@ class youBotAll(youBotArm, youBotBase):
             elif done:
                 break
 
+        self.prev_action = action
         _, obs = self.get_observation()
 
         return obs, reward, done
@@ -91,8 +94,9 @@ class youBotAll(youBotArm, youBotBase):
         #    self.done = True
         #    reward = -3
         else:
+            reward_act = (-np.sum(np.array(self.action) - np.array(self.prev_action))**2) / 10
             reward = -dist_ee_target/5 if self.reward_dense else 0
-
+            reward += reward_act
         return reward, self.done
 
     def _reset_target_position(self,random_=False, position=[-1.15,0,0.325]):

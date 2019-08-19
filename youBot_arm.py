@@ -5,7 +5,7 @@ from pyrep.objects.dummy import Dummy
 import torch
 import numpy as np
 import random
-from math import sqrt
+from math import sqrt, cos, sin, radians
 
 class youBotArm(youBotEnv):
     def __init__(self, scene_name, obs_lowdim=True, rpa=6, reward_dense=True, demonstration_mode=False, boundary=0):
@@ -92,7 +92,7 @@ class youBotArm(youBotEnv):
             while True:
                 x = random.uniform(-0.4,0.08)
                 y = random.uniform(-0.2,0.2)
-                z = random.uniform(0.2,0.45)
+                z = random.uniform(0.28,0.48)
                 try:
                     joints_pos = self.arm.solve_ik(position=[x+x_ref,y+y_ref,z], euler=[0,0,1.57])
                 except:
@@ -123,8 +123,10 @@ class youBotArm(youBotEnv):
 
     def _set_actuation(self, action):
         if not self.demonstration_mode:
-            z_tip = self.tip.get_position()[-1]
-            if abs(np.sum(action)) < 0.0001 or (z_tip < 0.18 and np.sum(action[1:]) > 0.1 ):
+            current_joint_pos = self.arm.get_joint_positions()
+            new_joint_pos = np.array(current_joint_pos) + np.array(action) * 0.05
+            z_tip_after = self._fk(new_joint_pos.tolist()) + 0.2209
+            if abs(np.sum(action)) < 0.0001 or z_tip_after < 0.185:
                 self.arm.set_joint_target_velocities([0,0,0,0,0])
             else:
                 # scaled_action = np.array(action)*0.01 + np.array(self.prev_tip_pos)
@@ -146,6 +148,13 @@ class youBotArm(youBotEnv):
             scaled_action = np.array(self.arm.get_joint_velocities())/1.57
             self.action = scaled_action.tolist()
             return scaled_action
+
+    def _fk(self, joint_angles):
+        l1, l2, l3 = [0.155, 0.135, 0.218]
+        theta1, theta2, theta3 = joint_angles[1:4]
+        z = l1 * cos(theta1) + l2 * cos(theta1 + theta2) + l3 * cos(theta1 + theta2 + theta3)
+        #z = l1 * sin(theta1) + l2 * sin(theta2) + l3 * sin(theta3)
+        return z
 
     def step_limit(self):
         return 80

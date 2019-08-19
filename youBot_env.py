@@ -14,7 +14,7 @@ class youBotEnv(object):
     def __init__(self, scene_name, reward_dense, boundary):
         self.pr = PyRep()
         SCENE_FILE = join(dirname(abspath(__file__)), scene_name)
-        self.pr.launch(SCENE_FILE,headless=True)
+        self.pr.launch(SCENE_FILE,headless=False)
         self.pr.start()
         self.pr.set_simulation_timestep(0.05)
 
