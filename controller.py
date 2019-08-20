@@ -13,9 +13,9 @@ import cv2
 
 from math import sqrt
 
-class youBot_controller(youBotArm):
+class youBot_controller(youBotAll):
     def __init__(self, OBS_LOW, ARM, BASE, REWARD, BOUNDARY, NAME):
-        super().__init__('youbot_navig.ttt', obs_lowdim=OBS_LOW, rpa=1, reward_dense=REWARD, demonstration_mode=True)
+        super().__init__('youbot_navig2.ttt', obs_lowdim=OBS_LOW, rpa=1, reward_dense=REWARD, demonstration_mode=True)
 
         self.OBS_LOW = OBS_LOW
         self.ARM = ARM
@@ -103,7 +103,11 @@ def main():
     controller = youBot_controller(args.OBS_LOW, args.ARM, args.BASE, args.REWARD_DENSE, args.BOUNDARY, args.save_file)
     controller.reset()
 
+    table = Shape('table')
+
     for ep in range(args.N_DEM):
+        table.set_collidable(0)
+        table.set_respondable(0)
         obs = controller.reset().tolist()
         time.sleep(0.1)
         steps = 0
@@ -113,9 +117,13 @@ def main():
         # Compute paths
         target_pos = controller.target_base.get_position()
         target_or = controller.target_base.get_orientation()[-1]
+        # if not args.BASE:
         if args.BASE:
-            path_base = controller.mobile_base.get_linear_path(target_pos,target_or)
-
+            try:
+                path_base = controller.mobile_base.get_linear_path(target_pos,target_or)
+            except:
+                continue
+                
             if path_base == None:
                 print("No path could be computed")
                 continue
@@ -146,10 +154,14 @@ def main():
                     break
 
         if args.ARM:
+            # path_base_done = True
+
             if path_base_done or not args.BASE:
                 if args.BASE:
                     controller.mobile_base.set_motor_locked_at_zero_velocity(1)
                     controller.mobile_base.set_joint_target_velocities([0,0,0,0])
+                    table.set_collidable(1)
+                    table.set_respondable(1)
 
                 try:
                     path_arm = controller.arm.get_nonlinear_path(position=target_pos,euler=[0,0,target_or])
@@ -165,19 +177,20 @@ def main():
                 time.sleep(0.1)
                 path_arm_done = False
                 done = False
-                try:
-                    while not done:
-                        action_arm, path_arm_done = [0,0,0,0,0], path_arm.step() #Action zero as computed in the environment class
-                        action_base = [0,0,0] if args.BASE else []
-                        steps += 1
-                        next_obs, reward, done = controller.step(np.concatenate((action_base,action_arm),axis=0).tolist())
-                        next_obs = next_obs.tolist()
-                        controller.log_obs(obs + next_obs + controller.action + [reward,done,steps,ep+1])
+            try:
+                while not done:
+                    action_arm, path_arm_done = [0,0,0,0,0], path_arm.step() #Action zero as computed in the environment class
+                    action_base = [0,0,0] if args.BASE else []
+                    steps += 1
+                    next_obs, reward, done = controller.step(np.concatenate((action_base,action_arm),axis=0).tolist())
+                    next_obs = next_obs.tolist()
+                    # For arm concatenate obs and action for base at rest
+                    controller.log_obs(obs + next_obs + controller.action + [reward,done,steps,ep+1])
 
-                        obs = next_obs
-                except:
-                    args.N_DEM += 1
-                    continue
+                    obs = next_obs
+            except:
+                args.N_DEM += 1
+                continue
 
                 #path_arm.clear_visualization()
 
