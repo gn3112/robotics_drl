@@ -40,8 +40,8 @@ class youBotArm(youBotEnv):
         arm_joint_vel = self.arm.get_joint_velocities()
         if self.obs_lowdim:
             targ_vec = np.array(self.target_base.get_position()) - np.array(self.tip.get_position())
-            tip_pos = self.tip.get_position(relative_to=self.mobile_base)
-            tip_or = self.tip.get_orientation(relative_to=self.mobile_base)
+            tip_pos = self.tip.get_position()
+            tip_or = self.tip.get_orientation()
             return None, torch.tensor(np.concatenate((arm_joint_pos, arm_joint_vel, tip_pos, self.action, targ_vec), axis=0)).float() # ADD tip_or when augmenting action space
         else:
             return env.render('arm'), torch.tensor(np.concatenate((arm_joint_pos, arm_joint_vel),axis=0)).float()
