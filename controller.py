@@ -23,7 +23,10 @@ class youBot_controller(youBotAll):
 
         home = os.path.expanduser('~')
         self.logdir = os.path.join(home,'robotics_drl/data/demonstrations',NAME)
-        if not(os.path.exists(self.logdir)):
+        os.makedirs(self.logdir)
+
+        if not self.OBS_LOW:
+            self.logdir = os.path.join(home,'robotics_drl/data/demonstrations',NAME,'image_observations')
             os.makedirs(self.logdir)
 
         os.chdir(self.logdir)
@@ -60,14 +63,14 @@ class youBot_controller(youBotAll):
             self.pr.step()
         return done
 
-    def log_obs(self,L,ep=None,step=None):
-        if self.OBS_LOW:
-            os.chdir(self.logdir)
-            for i in range(len(L)):
-                L[i] = str(L[i])
-            self.log_file.write('\t'.join(L))
-            self.log_file.write('\n')
-        else:
+    def log_obs(self,L,imgs=None,ep=None,step=None):
+        os.chdir(self.logdir)
+        for i in range(len(L)):
+            L[i] = str(L[i])
+        self.log_file.write('\t'.join(L))
+        self.log_file.write('\n')
+
+        if not self.OBS_LOW:
             os.chdir(os.path.join(self.logdir,'image_observations'))
             self.cv2.imwrite("episode%s_step%s.png" %(ep,step), img)
 
@@ -81,8 +84,6 @@ class youBot_controller(youBotAll):
         done = self.follow_path(path)
 
         return done
-
-
 
 def main():
     import argparse
@@ -123,7 +124,7 @@ def main():
                 path_base = controller.mobile_base.get_linear_path(target_pos,target_or)
             except:
                 continue
-                
+
             if path_base == None:
                 print("No path could be computed")
                 continue
@@ -136,9 +137,15 @@ def main():
                     action = np.concatenate((action_base,action_arm),axis=0)
                 else:
                     action = action_base
+
                 next_obs, reward, done = controller.step(action)
-                next_obs = next_obs.tolist()
-                controller.log_obs(obs + next_obs + controller.action + [reward,done,steps,ep+1])
+                if args.OBS_LOW:
+                    next_obs = next_obs.tolist()
+                    controller.log_obs(obs + next_obs + controller.action + [reward,done,steps,ep+1])
+                else:
+                    next_obs_high = next_obs['high']
+                    next_obs_low = next_obs['low'].tolist()
+                    controller.log_obs(obs['low'].tolist() + next_obs_low + controller.action + [reward,done,steps,ep+1], imgs=next_obs_high,ep=ep+1,step=steps)
 
                 obs = next_obs
                 if not args.ARM:
@@ -177,20 +184,24 @@ def main():
                 time.sleep(0.1)
                 path_arm_done = False
                 done = False
-            try:
-                while not done:
-                    action_arm, path_arm_done = [0,0,0,0,0], path_arm.step() #Action zero as computed in the environment class
-                    action_base = [0,0,0] if args.BASE else []
-                    steps += 1
-                    next_obs, reward, done = controller.step(np.concatenate((action_base,action_arm),axis=0).tolist())
-                    next_obs = next_obs.tolist()
-                    # For arm concatenate obs and action for base at rest
-                    controller.log_obs(obs + next_obs + controller.action + [reward,done,steps,ep+1])
 
-                    obs = next_obs
-            except:
-                args.N_DEM += 1
-                continue
+                try:
+                    while not done:
+                        action_arm, path_arm_done = [0,0,0,0,0], path_arm.step() #Action zero as computed in the environment class
+                        action_base = [0,0,0] if args.BASE else []
+                        steps += 1
+                        next_obs, reward, done = controller.step(np.concatenate((action_base,action_arm),axis=0).tolist())
+                        if args.OBS_LOW:
+                            next_obs = next_obs.tolist()
+                            controller.log_obs(obs + next_obs + controller.action + [reward,done,steps,ep+1])
+                        else:
+                            next_obs_high = next_obs['high']
+                            next_obs_low = next_obs['low'].tolist()
+                            controller.log_obs(obs['low'].tolist() + next_obs_low + controller.action + [reward,done,steps,ep+1], imgs=next_obs_high,ep=ep+1,step=steps)
+                        obs = next_obs
+                except:
+                    args.N_DEM += 1
+                    continue
 
                 #path_arm.clear_visualization()
 
