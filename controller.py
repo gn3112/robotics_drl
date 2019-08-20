@@ -23,7 +23,10 @@ class youBot_controller(youBotArm):
 
         home = os.path.expanduser('~')
         self.logdir = os.path.join(home,'robotics_drl/data/demonstrations',NAME)
-        if not(os.path.exists(self.logdir)):
+        os.makedirs(self.logdir)
+
+        if not self.OBS_LOW:
+            self.logdir = os.path.join(home,'robotics_drl/data/demonstrations',NAME,'image_observations')
             os.makedirs(self.logdir)
 
         os.chdir(self.logdir)
@@ -60,14 +63,14 @@ class youBot_controller(youBotArm):
             self.pr.step()
         return done
 
-    def log_obs(self,L,ep=None,step=None):
-        if self.OBS_LOW:
-            os.chdir(self.logdir)
-            for i in range(len(L)):
-                L[i] = str(L[i])
-            self.log_file.write('\t'.join(L))
-            self.log_file.write('\n')
-        else:
+    def log_obs(self,L,imgs=None,ep=None,step=None):
+        os.chdir(self.logdir)
+        for i in range(len(L)):
+            L[i] = str(L[i])
+        self.log_file.write('\t'.join(L))
+        self.log_file.write('\n')
+
+        if not self.OBS_LOW:
             os.chdir(os.path.join(self.logdir,'image_observations'))
             self.cv2.imwrite("episode%s_step%s.png" %(ep,step), img)
 
@@ -128,9 +131,15 @@ def main():
                     action = np.concatenate((action_base,action_arm),axis=0)
                 else:
                     action = action_base
+
                 next_obs, reward, done = controller.step(action)
-                next_obs = next_obs.tolist()
-                controller.log_obs(obs + next_obs + controller.action + [reward,done,steps,ep+1])
+                if args.OBS_LOW:
+                    next_obs = next_obs.tolist()
+                    controller.log_obs(obs + next_obs + controller.action + [reward,done,steps,ep+1])
+                else:
+                    next_obs_high = next_obs['high']
+                    next_obs_low = next_obs['low'].tolist()
+                    controller.log_obs(obs['low'].tolist() + next_obs_low + controller.action + [reward,done,steps,ep+1], imgs=next_obs_high,ep=ep+1,step=steps)
 
                 obs = next_obs
                 if not args.ARM:
@@ -171,9 +180,13 @@ def main():
                         action_base = [0,0,0] if args.BASE else []
                         steps += 1
                         next_obs, reward, done = controller.step(np.concatenate((action_base,action_arm),axis=0).tolist())
-                        next_obs = next_obs.tolist()
-                        controller.log_obs(obs + next_obs + controller.action + [reward,done,steps,ep+1])
-
+                        if args.OBS_LOW:
+                            next_obs = next_obs.tolist()
+                            controller.log_obs(obs + next_obs + controller.action + [reward,done,steps,ep+1])
+                        else:
+                            next_obs_high = next_obs['high']
+                            next_obs_low = next_obs['low'].tolist()
+                            controller.log_obs(obs['low'].tolist() + next_obs_low + controller.action + [reward,done,steps,ep+1], imgs=next_obs_high,ep=ep+1,step=steps)
                         obs = next_obs
                 except:
                     args.N_DEM += 1
