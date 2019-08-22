@@ -80,7 +80,7 @@ class youBotAll(youBotArm, youBotBase):
 
     def _get_reward(self):
         # Get the distance to target
-        target_rel_pos = self.target_base.get_position(self.tip)
+        target_rel_pos = self.target_base.get_position(relative_to=self.tip)
         dist_ee_target = sqrt(target_rel_pos[0]**2 + target_rel_pos[1]**2 + target_rel_pos[2]**2)
 
         # Distance to measure if robot out of bound
@@ -94,7 +94,7 @@ class youBotAll(youBotArm, youBotBase):
         #    self.done = True
         #    reward = -3
         else:
-            reward_act = (-np.sum(np.array(self.action) - np.array(self.prev_action))**2) / 10
+            reward_act = (-np.sum(np.array(self.action) - np.array(self.prev_action))**2) / 20
             reward = -dist_ee_target/5 if self.reward_dense else 0
             reward += reward_act
         return reward, self.done
