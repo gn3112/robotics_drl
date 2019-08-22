@@ -132,8 +132,8 @@ class youBotBase(youBotEnv):
         scaled_action = [0,0,0]
         if not self.demonstration_mode:
             for i in range(2):
-                scaled_action[i] = action[i]*3.5 #unnormalise by multiplying by 0.01 (max) for v=4rad/s
-            scaled_action[2] = action[2]*5 #max v rota = 6 rad/s
+                scaled_action[i] = action[i]*2 #unnormalise by multiplying by 0.01 (max) for v=4rad/s
+            scaled_action[2] = action[2]*2.5 #max v rota = 6 rad/s
 
             # e = np.array(scaled_action)
             # e_P = e
@@ -151,7 +151,7 @@ class youBotBase(youBotEnv):
         else:
             for i in range(2):
                 # scaled_action[i] = (action[i] * (0.05*0.1/2)) / 0.01
-                scaled_action[i] = action[i] / 3.5
-            scaled_action[2] = action[2] / 5
+                scaled_action[i] = action[i] / 2
+            scaled_action[2] = action[2] / 2.5
             self.action = scaled_action
             return scaled_action
