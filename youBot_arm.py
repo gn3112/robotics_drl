@@ -92,7 +92,7 @@ class youBotArm(youBotEnv):
             while True:
                 x = random.uniform(-0.4,0.08)
                 y = random.uniform(-0.2,0.2)
-                z = random.uniform(0.28,0.48)
+                z = random.uniform(0.21,0.25)
                 try:
                     joints_pos = self.arm.solve_ik(position=[x+x_ref,y+y_ref,z], euler=[0,0,1.57])
                 except:
