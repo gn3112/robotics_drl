@@ -140,15 +140,16 @@ class SoftActorConv(nn.Module):
     return action, log_p
 
 class SoftActorGated(nn.Module):
-  def __init__(self, hidden_size, action_space, flow_type='radial', flows=0):
+  def __init__(self, hidden_size, action_space, obs_space, flow_type='radial', flows=0):
     super().__init__()
     self.hidden_size = hidden_size
     self.action_space = action_space
+    self.obs_space = obs_space
     self.log_std_min, self.log_std_max = -20, 2  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
 
     self.fc1 = nn.Linear(self.obs_space[0], hidden_size)
     self.fc2 = nn.Linear(hidden_size, hidden_size)
-    self.fc3 = nn.Linear(hidden_size, 2)
+    self.fc3 = nn.Linear(hidden_size, 1)
     self.fc4 = nn.Linear(hidden_size, self.action_space * 2)
 
     flows, flow_type = (1, 'tanh') if flows == 0 else (flows, flow_type)
@@ -157,12 +158,14 @@ class SoftActorGated(nn.Module):
   def forward(self, state, log_prob=False, deterministic=False):
     x = F.tanh(self.fc1(state))
     x = F.tanh(self.fc2(x))
-    gate = F.sigmoid(self.fc3(x)).view(-1,2) #Try 1-p with 1
+    gate = F.sigmoid(self.fc3(x)).view(-1,1) #Try 1-p with 1
+    device = gate.get_device()
+    neg_gate = torch.tensor([1.]).view(-1,1).repeat(gate.size()[0], 1).to(device) - gate
     policy = self.fc4(x).view(-1,self.action_space*2)
-    policy[:,:3] = torch.matmul(policy[:,:3].clone().view(-1,3,1), gate[:,0].view(-1,1,1)).view(-1,3)
-    policy[:,3:8] = torch.matmul(policy[:,3:8].clone().view(-1,5,1), gate[:,1].view(-1,1,1)).view(-1,5)
-    policy[:,8:11] = torch.matmul(policy[:,8:11].clone().view(-1,3,1), gate[:,0].view(-1,1,1)).view(-1,3)
-    policy[:,11:] = torch.matmul(policy[:,11:].clone().view(-1,5,1), gate[:,1].view(-1,1,1)).view(-1,5)
+    policy[:,:3] = torch.matmul(policy[:,:3].clone().view(-1,3,1), gate.view(-1,1,1)).view(-1,3)
+    policy[:,3:8] = torch.matmul(policy[:,3:8].clone().view(-1,5,1), neg_gate.view(-1,1,1)).view(-1,5)
+    policy[:,8:11] = torch.matmul(policy[:,8:11].clone().view(-1,3,1), gate.view(-1,1,1)).view(-1,3)
+    policy[:,11:] = torch.matmul(policy[:,11:].clone().view(-1,5,1), neg_gate.view(-1,1,1)).view(-1,5)
 
     policy_mean, policy_log_std = policy.chunk(2,dim=1)
     policy_log_std = torch.clamp(policy_log_std, min=self.log_std_min, max=self.log_std_max)
