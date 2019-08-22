@@ -10,12 +10,12 @@ import os
 import numpy as np
 import time
 import cv2
-
+import shutil
 from math import sqrt
 
-class youBot_controller(youBotArm):
+class youBot_controller(youBotAll):
     def __init__(self, OBS_LOW, ARM, BASE, REWARD, BOUNDARY, NAME):
-        super().__init__('youbot_navig.ttt', obs_lowdim=OBS_LOW, rpa=1, reward_dense=REWARD, demonstration_mode=True)
+        super().__init__('youbot_navig2.ttt', obs_lowdim=OBS_LOW, rpa=1, reward_dense=REWARD, demonstration_mode=True)
 
         self.OBS_LOW = OBS_LOW
         self.ARM = ARM
@@ -23,11 +23,13 @@ class youBot_controller(youBotArm):
 
         home = os.path.expanduser('~')
         self.logdir = os.path.join(home,'robotics_drl/data/demonstrations',NAME)
+        if os.path.exists(self.logdir):
+            shutil.rmtree(self.logdir)
+
         os.makedirs(self.logdir)
 
         if not self.OBS_LOW:
-            self.logdir = os.path.join(home,'robotics_drl/data/demonstrations',NAME,'image_observations')
-            os.makedirs(self.logdir)
+            os.makedirs(os.path.join(self.logdir,'image_observations'))
 
         os.chdir(self.logdir)
         self.log_file = open("log.txt","w")
@@ -72,7 +74,18 @@ class youBot_controller(youBotArm):
 
         if not self.OBS_LOW:
             os.chdir(os.path.join(self.logdir,'image_observations'))
-            self.cv2.imwrite("episode%s_step%s.png" %(ep,step), img)
+            ep = str(ep)
+            # if len(ep) < 2:
+            #     ep = '0' + ep
+
+            step = str(step)
+            # for _ in range(3 - len(step)):
+            #     step = '0' + step
+
+            ext = ['obs','nxt']
+            for i in range(2):
+                cv2.imwrite("episode%s_step%s_%s.png" %(ep,step,ext[i]), np.uint8(imgs[i].view(512,512,-1))[...,::-1])
+
 
     def generate_arm_trajectories(self):
         path = self.get_arm_path()
@@ -84,8 +97,6 @@ class youBot_controller(youBotArm):
         done = self.follow_path(path)
 
         return done
-
-
 
 def main():
     import argparse
@@ -106,7 +117,11 @@ def main():
     controller = youBot_controller(args.OBS_LOW, args.ARM, args.BASE, args.REWARD_DENSE, args.BOUNDARY, args.save_file)
     controller.reset()
 
+    table = Shape('table')
+
     for ep in range(args.N_DEM):
+        table.set_collidable(0)
+        table.set_respondable(0)
         obs = controller.reset().tolist()
         time.sleep(0.1)
         steps = 0
@@ -116,8 +131,12 @@ def main():
         # Compute paths
         target_pos = controller.target_base.get_position()
         target_or = controller.target_base.get_orientation()[-1]
+        # if not args.BASE:
         if args.BASE:
-            path_base = controller.mobile_base.get_linear_path(target_pos,target_or)
+            try:
+                path_base = controller.mobile_base.get_linear_path(target_pos,target_or)
+            except:
+                continue
 
             if path_base == None:
                 print("No path could be computed")
@@ -135,18 +154,19 @@ def main():
                 next_obs, reward, done = controller.step(action)
                 if args.OBS_LOW:
                     next_obs = next_obs.tolist()
-                    controller.log_obs(obs + next_obs + controller.action + [reward,done,steps,ep+1])
+                    controller.log_obs(obs+ next_obs + controller.action + [reward,done,steps,ep+1])
                 else:
-                    next_obs_high = next_obs['high']
                     next_obs_low = next_obs['low'].tolist()
-                    controller.log_obs(obs['low'].tolist() + next_obs_low + controller.action + [reward,done,steps,ep+1], imgs=next_obs_high,ep=ep+1,step=steps)
+                    controller.log_obs(obs['low'].tolist() + next_obs_low + controller.action + [reward,done,steps,ep+1], imgs=[obs['high'],next_obs['high']],ep=ep+1,step=steps)
 
                 obs = next_obs
+                target_rel_pos = controller.target_base.get_position(relative_to=controller.mobile_base)
+                dist_ee_target = sqrt(target_rel_pos[0]**2 + target_rel_pos[1]**2) - 0.45
                 if not args.ARM:
                     if done:
                         break
                 else:
-                    if path_base_done:
+                    if dist_ee_target < 0.1:
                         break
 
                 if steps > 350:
@@ -155,10 +175,14 @@ def main():
                     break
 
         if args.ARM:
+            # path_base_done = True
+
             if path_base_done or not args.BASE:
                 if args.BASE:
                     controller.mobile_base.set_motor_locked_at_zero_velocity(1)
                     controller.mobile_base.set_joint_target_velocities([0,0,0,0])
+                    table.set_collidable(1)
+                    table.set_respondable(1)
 
                 try:
                     path_arm = controller.arm.get_nonlinear_path(position=target_pos,euler=[0,0,target_or])
@@ -174,6 +198,7 @@ def main():
                 time.sleep(0.1)
                 path_arm_done = False
                 done = False
+
                 try:
                     while not done:
                         action_arm, path_arm_done = [0,0,0,0,0], path_arm.step() #Action zero as computed in the environment class
@@ -184,9 +209,8 @@ def main():
                             next_obs = next_obs.tolist()
                             controller.log_obs(obs + next_obs + controller.action + [reward,done,steps,ep+1])
                         else:
-                            next_obs_high = next_obs['high']
                             next_obs_low = next_obs['low'].tolist()
-                            controller.log_obs(obs['low'].tolist() + next_obs_low + controller.action + [reward,done,steps,ep+1], imgs=next_obs_high,ep=ep+1,step=steps)
+                            controller.log_obs(obs['low'].tolist() + next_obs_low + controller.action + [reward,done,steps,ep+1], imgs=[obs['high'],next_obs['high']],ep=ep+1,step=steps)
                         obs = next_obs
                 except:
                     args.N_DEM += 1
