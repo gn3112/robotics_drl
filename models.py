@@ -7,6 +7,7 @@ from pyro.distributions.torch_transform import TransformModule
 import torch.nn.functional as F
 import os
 import torchvision
+from models_lpf import *
 
 class TanhFlow(TransformModule):
   def __init__(self, size):
@@ -172,6 +173,91 @@ class SoftActorGated(nn.Module):
     action, log_p = self.flows(action, log_p)
     return action, log_p
 
+class ActorImageNet(nn.Module):
+    def __init__(self, hidden_size, action_space, obs_space, flow_type='radial', flows=0):
+        super().__init__()
+        self.log_std_min, self.log_std_max = -20, 2  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
+        self.obs_space = obs_space[0]
+        self.action_space = action_space
+        self.conv1 = nn.Conv2d(3,64,kernel_size=6, stride=2) # Check here for dim (frame staking)
+        self.max_pool1 = nn.MaxPool2d(kernel_size=3, stride=1)
+        self.down1 = Downsample(channels=64, filt_size=3, stride=2) #filt_size is blur kernel 3 or 5
+        self.conv2 = nn.Conv2d(64, 64,kernel_size=5, stride=1)
+        self.max_pool2 = nn.MaxPool2d(kernel_size=3, stride=1)
+        self.down2 = Downsample(channels=64, filt_size=3, stride=2) #filt_size is blur kernel 3 or 5
+
+        self.fc1 = nn.Linear(self.obs_space, 256)
+        self.fc2 = nn.Linear(256,64)
+
+        self.conv3 = nn.Conv2d(64,64,kernel_size=3, stride=1)
+        self.max_pool3 = nn.MaxPool2d(kernel_size=2, stride=1)
+        self.down3 = Downsample(channels=64, filt_size=3, stride=2) #filt_size is blur kernel 3 or 5
+        self.conv4 = nn.Conv2d(64,64,kernel_size=3, stride=1)
+        self.fc3 = nn.Linear(36864,self.action_space*2)
+
+        flows, flow_type = (1, 'tanh') if flows == 0 else (flows, flow_type)
+        self.flows = NormalisingFlow(self.action_space, flows, flow_type=flow_type)
+
+    def forward(self, obs, log_prob=False, deterministic=False):
+        high_obs = obs['high'].view(-1,3,256,256)
+        low_obs = obs['low'].view(-1,27)
+        high_x = F.relu(self.conv1(high_obs))
+        high_x = F.relu(self.conv2(self.down1(self.max_pool1(high_x))))
+        high_x = self.down2(self.max_pool2(high_x))
+
+        low_x = F.relu(self.fc1(low_obs))
+        low_x = F.relu(self.fc2(low_x)).view(-1,64,1,1)
+
+        x = F.relu(self.conv3(high_x + low_x))
+        x = F.relu(self.conv4(x))
+        x = self.fc3(x.view(x.size(0),-1))
+
+        policy_mean, policy_log_std = x.view(-1,self.action_space*2).chunk(2,dim=1)
+        policy_log_std = torch.clamp(policy_log_std, min=self.log_std_min, max=self.log_std_max)
+        base_distribution = Normal(policy_mean, policy_log_std.exp())
+        action = base_distribution.mean if deterministic else base_distribution.rsample()
+        log_p = base_distribution.log_prob(action).sum(dim=1) if log_prob else None
+        action, log_p = self.flows(action, log_p)
+        return action, log_p
+
+class CriticImageNet(nn.Module):
+    def __init__(self, hidden_size, output_size, obs_space, action_space, state_action=False, layer_norm=False):
+        super().__init__()
+        self.obs_space = obs_space[0]
+        self.action_space = action_space
+
+        self.conv1 = nn.Conv2d(3,64,kernel_size=6, stride=2) # Check here for dim (frame staking)
+        self.max_pool1 = nn.MaxPool2d(kernel_size=3, stride=1)
+        self.down1 = Downsample(channels=64, filt_size=3, stride=2) #filt_size is blur kernel 3 or 5
+        self.conv2 = nn.Conv2d(64, 64,kernel_size=5, stride=1)
+        self.max_pool2 = nn.MaxPool2d(kernel_size=3, stride=1)
+        self.down2 = Downsample(channels=64, filt_size=3, stride=2) #filt_size is blur kernel 3 or 5
+
+        self.fc1 = nn.Linear(self.obs_space + self.action_space, 256)
+        self.fc2 = nn.Linear(256,64)
+
+        self.conv3 = nn.Conv2d(64,64,kernel_size=3, stride=1)
+        self.max_pool3 = nn.MaxPool2d(kernel_size=2, stride=1)
+        self.down3 = Downsample(channels=64, filt_size=3, stride=2) #filt_size is blur kernel 3 or 5
+        self.conv4 = nn.Conv2d(64,64,kernel_size=3, stride=1)
+        self.fc3 = nn.Linear(36864, output_size)
+
+    def forward(self, obs, action=None):
+        high_obs = obs['high'].view(-1,3,256,256)
+        low_obs = obs['low'].view(-1,27)
+        high_x = F.relu(self.conv1(high_obs))
+        high_x = F.relu(self.conv2(self.down1(self.max_pool1(high_x))))
+        high_x = self.down2(self.max_pool2(high_x))
+
+        low_x = F.relu(self.fc1(torch.cat((low_obs, action.view(-1,8)),dim=1)))
+        low_x = F.relu(self.fc2(low_x)).view(-1,64,1,1)
+
+        x = F.relu(self.conv3(high_x + low_x))
+        x = F.relu(self.conv4(x))
+        x = self.fc3(x.view(x.size(0),-1))
+
+        return x.squeeze(dim=1)
+
 class SoftActorFork(nn.Module):
   def __init__(self, hidden_size, action_space, obs_space, flow_type='radial', flows=0):
     super().__init__()
@@ -233,7 +319,6 @@ class SoftActorFork(nn.Module):
     else:
         log_p = None
     return action, log_p
-
 
 class Critic(nn.Module):
   def __init__(self, hidden_size, output_size, obs_space, action_space, state_action=False, layer_norm=False):
