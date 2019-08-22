@@ -7,6 +7,7 @@ from pyro.distributions.torch_transform import TransformModule
 import torch.nn.functional as F
 import os
 import torchvision
+from models_lpf import *
 
 class TanhFlow(TransformModule):
   def __init__(self, size):
