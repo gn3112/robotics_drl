@@ -43,7 +43,7 @@ class youBotBase(youBotEnv):
             targ_vec = np.array(self.target_base.get_position()[:2]) - np.array(self.mobile_base.get_2d_pose()[:2])
             return None, torch.tensor(np.concatenate((pos_2d, self.xy_vel, self.rot_vel, self.action, targ_vec),axis=0)).float() # removed prev actions
         else:
-            return self.render('arm'), torch.tensor(np.concatenate((pos_2d, self.xy_vel, self.rot_vel, self.action),axis=0)).float()
+            return self.render('arm'), torch.tensor(np.concatenate((pos_2d, self.xy_vel, self.rot_vel),axis=0)).float()
 
     def step(self, action):
         reward = 0
