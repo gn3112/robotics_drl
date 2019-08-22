@@ -5,7 +5,7 @@ from torch import optim
 from torchvision import transforms as T
 from PIL import Image
 from tqdm import tqdm
-from models import Critic, SoftActor, SoftActorFork, create_target_network, update_target_network
+from models import Critic, SoftActor, SoftActorGated, SoftActorFork, create_target_network, update_target_network
 import logz
 import inspect
 import time
@@ -75,10 +75,10 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     ALPHA = 0.3
     BETA = 1
     epsilon = 0.0001 #0.1
-    epsilon_d = 0.3 #0.3
+    epsilon_d = 0.1 #0.3
     weights = 1 #1
     lambda_ac = 0.85 #0.7
-    lambda_bc = 0.2 #0.4
+    lambda_bc = 0.3 #0.4
 
     setup_logger(logdir, locals())
     ENV = __import__(ENV)
@@ -93,7 +93,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     obs_space = env.observation_space()
     step_limit = env.step_limit()
 
-    actor = SoftActorFork(HIDDEN_SIZE, action_space, obs_space, flow_type=FLOW_TYPE, flows=FLOWS).float().to(device)
+    actor = SoftActorGated(HIDDEN_SIZE, action_space, obs_space, flow_type=FLOW_TYPE, flows=FLOWS).float().to(device)
     critic_1 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True).float().to(device)
     critic_2 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True).float().to(device)
     actor.apply(weights_init)
