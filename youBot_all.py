@@ -7,6 +7,15 @@ import numpy as np
 import torch
 import random
 from math import sqrt
+from torchvision import transforms as T
+from pyrep.objects.shape import Shape
+
+def resize(a):
+    resize = T.Compose([T.ToPILImage(),
+                        T.Resize((256,256)),
+                        T.ToTensor(),
+                        T.Normalize((0.5,), (0.5,), (0.5,))])
+    return resize(np.uint8(a))
 
 class youBotAll(youBotArm, youBotBase):
     def __init__(self, scene_name,  obs_lowdim=True, rpa=6, reward_dense=True, boundary=1, demonstration_mode=False):
@@ -17,8 +26,11 @@ class youBotAll(youBotArm, youBotBase):
         self.action_space = 3 + 5
         self.action = [0 for _ in range(self.action_space)]
         self.prev_action = [0 for _ in range(self.action_space)]
-
+        self.steps_ep = 0
+        self.frames = 3
+        self.prev_obs = []
         self.arm.set_motor_locked_at_zero_velocity(1)
+        self.table = Shape('table')
 
     def get_observation(self):
         _, obsArm = youBotArm.get_observation(self)
@@ -29,11 +41,24 @@ class youBotAll(youBotArm, youBotBase):
             targ_vec_base = np.array(self.target_base.get_position()[:2]) - np.array(self.mobile_base.get_2d_pose()[:2])
             return None, torch.tensor(np.concatenate((obsArm[:-11], obsBase[:-10], self.action, targ_vec, targ_vec_base),axis=0)).float()
         else:
-            return torch.tensor(self.render('arm'), dtype=torch.float32).view(-1,512,512), torch.tensor(np.concatenate((obsArm, obsBase, self.action),axis=0)).float()
+            new_obs = resize(self.render('arm')).view(-1,256,256)
+            if self.steps_ep == 0:
+                obs = new_obs.view(-1,256,256)
+                for _ in range(self.frames-1):
+                    obs = torch.cat((obs,new_obs.view(-1,256,256)),dim=0)
+            else:
+                obs = self.prev_obs
+                for i in range(self.frames-1):
+                    obs[i*3:i*3+3,:,:] = obs[i*3+3:i*3+6,:,:]
+                obs[self.frames*3-3:self.frames*3,:,:] = new_obs
+
+            self.prev_obs = obs
+            return obs.view(-1,256,256), torch.tensor(np.concatenate((obsArm, obsBase, self.action),axis=0)).float()
 
     def step(self,action):
         reward = 0
         self.action = action
+        self.steps_ep += 1
         for _ in range(self.rpa):
             dem_action_base = youBotBase._set_actuation(self,action[:3])
             dem_action_arm = youBotArm._set_actuation(self,action[3:])
@@ -67,10 +92,11 @@ class youBotAll(youBotArm, youBotBase):
         return obs, reward, done
 
     def reset(self):
+        self.steps_ep = 0
         self.pr.set_configuration_tree(self.config_tree) # youBot model deteriorates over time so reset all dynamics at each new episode
 
         # youBotArm._reset_target_position(self, random_=False, position=[-0.5,0,0.3])
-        self._reset_target_position(random_=False)
+        self._reset_target_position(random_=True)
         self._reset_base_position(random_=True)
         # self._reset_base_position(random_=False)
         self._reset_arm(random_=True)
@@ -107,11 +133,13 @@ class youBotAll(youBotArm, youBotBase):
     def _reset_target_position(self,random_=False, position=[-1.15,0,0.325]):
         if random_:
             x_T,y_T, _ = self.rand_bound()
-            z_T = random.uniform(0.2,0.4)
+            #z_T = random.uniform(0.2,0.4)
+            z_T = 0.325
         else:
             x_T, y_T, z_T = position
 
         self.target_base.set_position([x_T,y_T,z_T])
+        self.table.set_position([x_T,y_T,0.15])
         self.done = False
 
     def step_limit(self):

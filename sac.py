@@ -45,8 +45,14 @@ def load_buffer_demonstrations(D,dir,PRIORITIZE_REPLAY, OBS_LOW, resize):
                 next_state.append(all[idx])
 
         if not OBS_LOW:
-            state = {'low': torch.tensor(state).float().to(device), 'high': resize(io.imread('image_observations/' + 'episode%s_step%s_obs.png'%(data['episode'][i],data['steps'][i]))).float().to(device)}
-            next_state = {'low': torch.tensor(next_state).float().to(device), 'high': resize(io.imread('image_observations/' + 'episode%s_step%s_nxt.png'%(data['episode'][i],data['steps'][i]))).float().to(device)}
+            state_high = torch.tensor([]).float()
+            next_state_high = torch.tensor([]).float()
+            for j in range(3):
+                state_high = torch.cat((state_high,resize(io.imread('image_observations/' + 'episode%s_step%s_frame%s_obs.png'%(data['episode'][i],data['steps'][i],j)))),dim=0)
+                next_state_high = torch.cat((next_state_high, resize(io.imread('image_observations/' + 'episode%s_step%s_frame%s_nxt.png'%(data['episode'][i],data['steps'][i],j)))),dim=0)
+
+            state = {'low': torch.tensor(state).float().to(device), 'high': state_high.to(device)}
+            next_state = {'low': torch.tensor(next_state).float().to(device), 'high': next_state_high.to(device)}
 
         if PRIORITIZE_REPLAY:
             D.add(state, action, reward[0], next_state, True if reward == 1 else False)
@@ -87,7 +93,8 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
     resize = T.Compose([T.ToPILImage(),
                         T.Resize((256,256)),
-                        T.ToTensor()])
+                        T.ToTensor(),
+                        T.Normalize((0.5,), (0.5,), (0.5,))])
 
     setup_logger(logdir, locals())
     ENV = __import__(ENV)
@@ -156,7 +163,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
         state = state.float().to(device)
     else:
         state['low'] = state['low'].float().to(device)
-        state['high'] = resize(state['high']).float().to(device)
+        state['high'] = state['high'].float().to(device)
     pbar = tqdm(range(1, MAX_STEPS + 1), unit_scale=1, smoothing=0)
 
     steps = 0
@@ -177,7 +184,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 next_state = next_state.float().to(device)
             else:
                 next_state['low'] = next_state['low'].float().to(device)
-                next_state['high'] = resize(next_state['high']).float().to(device)
+                next_state['high'] = next_state['high'].float().to(device)
             # Store (s, a, r, s', d) in replay buffer D
             if PRIORITIZE_REPLAY:
                 D.add(state.cpu().tolist() if OBSERVATION_LOW else state, action.cpu().squeeze().tolist(), reward, next_state.cpu().tolist() if OBSERVATION_LOW else next_state, done)
@@ -195,8 +202,8 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                     state = env.reset().float().to(device)
                 else:
                     state = env.reset()
-                    state['low'] = state['high'].float().to(device)
-                    state['high'] = resize(state['high']).float().to(device)
+                    state['low'] = state['low'].float().to(device)
+                    state['high'] = state['high'].float().to(device)
                 if reward == 1:
                     success += 1
 
@@ -211,15 +218,13 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                     else:
                         new_state_batch = {'low': torch.tensor([]).float().to(device), 'high': torch.tensor([]).float().to(device)}
                         new_next_state_batch = {'low': torch.tensor([]).float().to(device), 'high': torch.tensor([]).float().to(device)}
-                        start = time.time()
                         for j in range(BATCH_SIZE):
-                            new_state_batch['high'] = torch.cat((new_state_batch['high'], state_batch[j].tolist()['high'].view(-1,3,256,256)), dim=0)
+                            new_state_batch['high'] = torch.cat((new_state_batch['high'], state_batch[j].tolist()['high'].view(-1,3*env.frames,256,256)), dim=0)
                             new_state_batch['low'] = torch.cat((new_state_batch['low'], state_batch[j].tolist()['low'].view(-1,27)), dim=0)
-                            new_next_state_batch['high'] = torch.cat((new_next_state_batch['high'], state_next_batch[j].tolist()['high'].view(-1,3,256,256)), dim=0)
+                            new_next_state_batch['high'] = torch.cat((new_next_state_batch['high'], state_next_batch[j].tolist()['high'].view(-1,3*env.frames,256,256)), dim=0)
                             new_next_state_batch['low'] = torch.cat((new_next_state_batch['low'], state_next_batch[j].tolist()['low'].view(-1,27)), dim=0)
                         state_batch = new_state_batch
                         state_next_batch = new_next_state_batch
-                        print(time.time()-start)
 
                     action_batch = torch.from_numpy(action_batch).float().to(device)
                     reward_batch = torch.from_numpy(reward_batch).float().to(device)
@@ -297,7 +302,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                                 if OBSERVATION_LOW:
                                     state_dem = torch.cat((state_dem, batch['state'][i].view(1,-1)), dim=0)
                                 else:
-                                    state_dem['high'] = torch.cat((state_dem['high'], batch['state']['high'][i,].view(-1,3,256,256)), dim=0)
+                                    state_dem['high'] = torch.cat((state_dem['high'], batch['state']['high'][i,].view(-1,3*env.frames,256,256)), dim=0)
                                     state_dem['low'] = torch.cat((state_dem['low'], batch['state']['low'][i,].view(-1,27)), dim=0)
                         i += 1
                     if not action_dem.nelement() == 0:
