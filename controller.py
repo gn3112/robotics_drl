@@ -12,6 +12,7 @@ import time
 import cv2
 import shutil
 from math import sqrt
+import torchvision
 
 class youBot_controller(youBotAll):
     def __init__(self, OBS_LOW, ARM, BASE, REWARD, BOUNDARY, NAME):
@@ -84,8 +85,8 @@ class youBot_controller(youBotAll):
 
             ext = ['obs','nxt']
             for i in range(2):
-                cv2.imwrite("episode%s_step%s_%s.png" %(ep,step,ext[i]), np.uint8(imgs[i].view(512,512,-1))[...,::-1])
-
+                for j in range(self.frames):
+                    torchvision.utils.save_image(imgs[i].view(-1,256,256)[3*j:3*j+3,:,:], "episode%s_step%s_frame%s_%s.png" %(ep,step,j,ext[i]), normalize=True)
 
     def generate_arm_trajectories(self):
         path = self.get_arm_path()
@@ -122,7 +123,7 @@ def main():
     for ep in range(args.N_DEM):
         table.set_collidable(0)
         table.set_respondable(0)
-        obs = controller.reset().tolist()
+        obs = controller.reset()
         time.sleep(0.1)
         steps = 0
         done = False
@@ -154,7 +155,7 @@ def main():
                 next_obs, reward, done = controller.step(action)
                 if args.OBS_LOW:
                     next_obs = next_obs.tolist()
-                    controller.log_obs(obs+ next_obs + controller.action + [reward,done,steps,ep+1])
+                    controller.log_obs(obs.tolist() + next_obs + controller.action + [reward,done,steps,ep+1])
                 else:
                     next_obs_low = next_obs['low'].tolist()
                     controller.log_obs(obs['low'].tolist() + next_obs_low + controller.action + [reward,done,steps,ep+1], imgs=[obs['high'],next_obs['high']],ep=ep+1,step=steps)
@@ -167,6 +168,7 @@ def main():
                         break
                 else:
                     if dist_ee_target < 0.1:
+                        path_base_done=True
                         break
 
                 if steps > 350:
