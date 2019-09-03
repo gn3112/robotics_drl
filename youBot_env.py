@@ -14,7 +14,7 @@ class youBotEnv(object):
     def __init__(self, scene_name, reward_dense, boundary):
         self.pr = PyRep()
         SCENE_FILE = join(dirname(abspath(__file__)), scene_name)
-        self.pr.launch(SCENE_FILE,headless=False)
+        self.pr.launch(SCENE_FILE,headless=True)
         self.pr.start()
         self.pr.set_simulation_timestep(0.05)
 
@@ -30,7 +30,7 @@ class youBotEnv(object):
 
         self.camera_arm = VisionSensor('Vision_sensor1')
         self.camera_arm.set_render_mode(RenderMode.OPENGL3)
-        self.camera_arm.set_resolution([512,512])
+        self.camera_arm.set_resolution([128,128])
 
         self.reward_dense = reward_dense
         self.reward_termination = 1 if self.reward_dense else 0
@@ -38,10 +38,10 @@ class youBotEnv(object):
 
     def render(self,view='top'):
         if view == 'top':
-            img = self.camera_top.capture_rgb() # (dim,dim,3)
+            img = self.camera_top.capture_rgb()*256 # (dim,dim,3)
         elif view == 'arm':
             img = self.camera_arm.capture_rgb()
-        return img*256
+        return img
 
     def terminate(self):
         self.pr.stop()  # Stop the simulation

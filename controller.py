@@ -83,10 +83,9 @@ class youBot_controller(youBotAll):
             # for _ in range(3 - len(step)):
             #     step = '0' + step
 
-            ext = ['obs','nxt']
-            for i in range(2):
-                for j in range(self.frames):
-                    torchvision.utils.save_image(imgs[i].view(-1,256,256)[3*j:3*j+3,:,:], "episode%s_step%s_frame%s_%s.png" %(ep,step,j,ext[i]), normalize=True)
+            img_ = imgs.view(-1,128,128)
+            torchvision.utils.save_image(img_[:3,:,:], "episode%s_step%s_rgb.png" %(ep,step), normalize=True)
+            torchvision.utils.save_image(img_[-1,:,:], "episode%s_step%s_d.png" %(ep,step), normalize=False)
 
     def generate_arm_trajectories(self):
         path = self.get_arm_path()
@@ -158,7 +157,7 @@ def main():
                     controller.log_obs(obs.tolist() + next_obs + controller.action + [reward,done,steps,ep+1])
                 else:
                     next_obs_low = next_obs['low'].tolist()
-                    controller.log_obs(obs['low'].tolist() + next_obs_low + controller.action + [reward,done,steps,ep+1], imgs=[obs['high'],next_obs['high']],ep=ep+1,step=steps)
+                    controller.log_obs(obs['low'].tolist() + next_obs_low + controller.action + [reward,done,steps,ep+1], imgs=obs['high'],ep=ep+1,step=steps)
 
                 obs = next_obs
                 target_rel_pos = controller.target_base.get_position(relative_to=controller.mobile_base)
@@ -212,7 +211,7 @@ def main():
                             controller.log_obs(obs + next_obs + controller.action + [reward,done,steps,ep+1])
                         else:
                             next_obs_low = next_obs['low'].tolist()
-                            controller.log_obs(obs['low'].tolist() + next_obs_low + controller.action + [reward,done,steps,ep+1], imgs=[obs['high'],next_obs['high']],ep=ep+1,step=steps)
+                            controller.log_obs(obs['low'].tolist() + next_obs_low + controller.action + [reward,done,steps,ep+1], imgs=obs['high'],ep=ep+1,step=steps)
                         obs = next_obs
                 except:
                     args.N_DEM += 1
