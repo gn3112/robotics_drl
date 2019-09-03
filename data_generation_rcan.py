@@ -2,6 +2,7 @@
 from random import random, randrange, uniform, choice
 import numpy as np
 from pyrep import PyRep
+from pyrep.backend import vrep
 from pyrep.objects.shape import Shape
 from pyrep.objects.dummy import Dummy
 from pyrep.objects.light import Light
@@ -122,7 +123,7 @@ def create_structure(n_iteration):
 def create_random_scene(n_walls, boundary):
     # Constants
     width_w = 2
-    height_w = 3
+    height_w = 1.7
     dist_walls_front = 2
     dist_walls_side = 3
 
@@ -185,7 +186,7 @@ def add_procedural_object(boundary):
     b = a.get_convex_decomposition(use_vhacd=True, vhacd_res=100)
     a.set_parent(b,keep_in_place=True)
 
-    b.set_collidable(0)
+    b.set_collidable(1)
     b.set_measurable(0)
     b.set_detectable(0)
     b.set_renderable(0)
@@ -193,16 +194,23 @@ def add_procedural_object(boundary):
     b.set_respondable(1)
     b.set_dynamic(1)
 
-    a.set_collidable(1)
-    a.set_measurable(1)
-    a.set_detectable(1)
-    a.set_renderable(1)
-
     b.reset_dynamic_object()
     pos_2d = [uniform(-boundary, boundary) for _ in range(2)]
     b.set_position(pos_2d + [3])
 
-    return a, b
+    a_all = a.ungroup()
+    if len(a_all) > 1:
+        a.remove()
+        return [], []
+    for idx, j in enumerate(a_all):
+        a_all[idx] = Shape(j)
+        a_all[idx].set_collidable(1)
+        a_all[idx].set_measurable(1)
+        a_all[idx].set_detectable(1)
+        a_all[idx].set_renderable(1)
+        a_all[idx].set_dynamic(0)
+
+    return a_all, b
 
 def add_object(boundary):
     while True:
@@ -224,25 +232,18 @@ def add_object(boundary):
                 continue
             break
 
-
-
     # b = Shape.create(PrimitiveShape.CUBOID,[box_size[-1],box_size[3],box_size[1]],orientation=[0,0,0], static=True)
 
     a.set_parent(b,keep_in_place=True)
     a.set_position([0,0,0],relative_to=b)
 
-    b.set_collidable(0)
+    b.set_collidable(1)
     b.set_measurable(0)
     b.set_detectable(0)
     b.set_renderable(0)
 
     b.set_respondable(1)
     b.set_dynamic(1)
-
-    a.set_collidable(1)
-    a.set_measurable(1)
-    a.set_detectable(1)
-    a.set_renderable(1)
 
     b.reset_dynamic_object()
 
@@ -255,9 +256,14 @@ def add_object(boundary):
             break
 
     a_all = a.ungroup()
+
     for idx, j in enumerate(a_all):
         a_all[idx] = Shape(j)
-
+        # a_all[idx].set_collidable(1)
+        # a_all[idx].set_measurable(1)
+        # a_all[idx].set_detectable(1)
+        # a_all[idx].set_renderable(1)
+        # a_all[idx].set_dynamic(0)
     return a_all, b
 
 def load_scene():
@@ -265,7 +271,7 @@ def load_scene():
     dir = join(home_dir,'scenenet_scenes/1Bathroom/5_labels.obj')
     a = Shape.import_mesh(filename=dir)
 
-def apply_domain_rand(floor, camera, lights, walls, ceiling, objects, env):
+def apply_domain_rand(floor, camera, lights, walls, ceiling, objects, robot_links, env):
     # Apply domain rand to: lightning, texture, position camera, field of view
     texture_objects = []
 
@@ -275,52 +281,82 @@ def apply_domain_rand(floor, camera, lights, walls, ceiling, objects, env):
     texture_id, texture_object = _get_texture(env)
     texture_objects.append(texture_object)
     floor.set_texture(texture = texture_id, mapping_mode = TextureMappingMode.PLANE, interpolate=True, decal_mode=False, repeat_along_u=True,
-                    repeat_along_v=True, uv_scaling=[10,10])
+                    repeat_along_v=True, uv_scaling=[1,1])
+    floor.set_color([1,1,1])
     texture_id, texture_object = _get_texture(env)
     texture_objects.append(texture_object)
     ceiling.set_texture(texture = texture_id, mapping_mode = TextureMappingMode.PLANE, interpolate=True, decal_mode=False, repeat_along_u=True,
-                    repeat_along_v=True, uv_scaling=[10,10])
+                    repeat_along_v=True, uv_scaling=[1,1])
     texture_id, texture_object = _get_texture(env)
     texture_objects.append(texture_object)
     for j in walls:
+        j.set_color([1,1,1])
         j.set_texture(texture = texture_id, mapping_mode = TextureMappingMode.PLANE, interpolate=True, decal_mode=False, repeat_along_u=True,
-                    repeat_along_v=True, uv_scaling=[3,10])
+                        repeat_along_v=True, uv_scaling=[1,1])
+    obj_n = 0
+    obj_len = len(objects)
+    obj1_transp = randrange(0,obj_len)
+    obj2_transp = randrange(0,obj_len)
 
     for j in objects:
+        obj_n += 1
+        if obj_n == obj1_transp or obj_n == obj2_transp:
+            for i in j:
+                i.set_color([1,1,1])
+                i.set_color([0.5],transparent=True)
+        else:
+            texture_id, texture_object = _get_texture(env)
+            texture_objects.append(texture_object)
+            for i in j:
+                color = [random() for _ in range(3)]
+                i.set_color([1,1,1])
+                i.set_texture(texture = texture_id, mapping_mode = TextureMappingMode.PLANE)
+                #color_rgb = i.get_color()
+                #h, l, s = colorsys.rgb_to_hls(color_rgb[0],color_rgb[1],color_rgb[2])
+                #r, g, b = colorsys.hls_to_rgb(h, l, s + 0.15)
+
+    for j in robot_links:
         texture_id, texture_object = _get_texture(env)
         texture_objects.append(texture_object)
         for i in j:
-            color = [random() for _ in range(3)]
-            i.set_color(color)
-            i.set_texture(texture = texture_id, mapping_mode = TextureMappingMode.PLANE, decal_mode=False, interpolate=True)
-            color_rgb = i.get_color()
-            h, l, s = colorsys.rgb_to_hls(color_rgb[0],color_rgb[1],color_rgb[2])
-            r, g, b = colorsys.hls_to_rgb(h, l, s + 0.2)
-            i.set_color([r,g,b])
-            #env.pr.step()
+            i.set_color([1,1,1])
+            i.set_texture(texture = texture_id, mapping_mode = TextureMappingMode.PLANE)
 
     # Lights
-    light_pos = [uniform(-2,2) for _ in range(2)]
-    light_pos = light_pos + [uniform(-1.5,-0.5)]
+    light_pos = [uniform(-0.3,0.3) for _ in range(2)]
+    light_pos = light_pos + [uniform(-0.2,0)]
     lights.set_position(light_pos)
-    # Camera
+    #Camera
     camera_pos = np.array(camera.get_position())
     camera_pos = camera_pos + np.array([uniform(-0.05,0.05) for _ in range(3)])
     camera.set_position(camera_pos.tolist())
-    env.pr.step()
     return texture_objects
 
-def remove_textures(floor, walls, ceiling, objects, env):
+def remove_textures(floor, walls, ceiling, objects, floor_color, ceiling_color, walls_color, robot_links, env):
     [j.remove_texture() for j in walls]
     for j in objects:
         for i in j:
             i.remove_texture()
+            i.set_color([1],transparent=True)
             i.set_color([176/255, 58/255, 46/255])
 
     floor.remove_texture()
     ceiling.remove_texture()
 
-    env.pr.step()
+    floor.set_color(floor_color)
+    ceiling.set_color(ceiling_color)
+    for j in walls:
+        j.set_color(walls_color)
+
+    links_color = [[0,0,1],[0,1,0],[1,0,0]]
+    color_i = 0
+    for j in robot_links:
+        if color_i > 2:
+            color_i = 0
+        for i in j:
+            i.remove_texture()
+            i.set_color(links_color[color_i])
+        color_i += 1
 
 def save_sample(rand_active, camera, n_sample, dir):
     if rand_active:
@@ -339,11 +375,11 @@ def save_sample(rand_active, camera, n_sample, dir):
 
 def _change_dir(dir):
     home_dir = os.path.expanduser('~')
-    os.chdir(os.path.join(home_dir,'robotics_drl/data/%s'%(dir)))
+    os.chdir(os.path.join('/media/georges/disk/rcan_data'))
 
 def _get_texture(env):
     texture_file = choice(os.listdir('/home/georges/robotics_drl/data/textures/obj_textures/'))
-    texture_object, texture_id = env.pr.create_texture(filename='/home/georges/robotics_drl/data/textures/obj_textures/%s'%(texture_file))
+    texture_object, texture_id = env.pr.create_texture(filename='/home/georges/robotics_drl/data/textures/obj_textures/%s'%(texture_file), resolution=[512,512])
     texture_object.set_renderable(0)
     return texture_id, texture_object
 
@@ -364,20 +400,31 @@ def main():
     #     os.mkdir('/home/georges/robotics_drl/data/rcan_data')
     area = 5**2
     objects_per_m2 = args.obj_m2
-    n_samples = 600
+    n_samples = 800
     l_ep = args.samples_scene
 
     env = youBotAll(scene_name= 'scene1.ttt' if args.boundary == 5 else 'scene1_5x5.ttt', boundary=args.boundary)
-    env.pr.set_simulation_timestep(0.1)
+    env.pr.set_simulation_timestep(0.5)
 
     n_objects = int(round(area * objects_per_m2))//2
     env.target_base.set_renderable(0) # Add a cube?
     floor = Shape('floor')
     ceiling = Shape('ceiling')
     lights = Dummy('DefaultLights')
+    arm_collection = env.arm._collision_collection
     camera = env.camera_arm
 
+    # Robot links
+    robot_links = []
+    links_size = [1,4,4,2,1,1,4]
+    for i in range(len(links_size)):
+        robot_links.append([Shape('link%s_%s'%(i+1,j)) for j in range(links_size[i])])
+
     env.boundary = args.boundary
+
+    floor_color = floor.get_color()
+    ceiling_color = ceiling.get_color()
+    walls_color = [0.3,0.47,1]
 
     # target = Shape.create(PrimitiveShape.CUBOID,[0.05,0.05,0.05],orientation=[0,0,0], static=True)
     # target.set_parent(env.target_base)
@@ -395,12 +442,14 @@ def main():
         walls = create_random_scene(args.n_walls, args.boundary)
         ceiling.set_position([0,0] + [uniform(2.5,3)])
         walls = walls[0] + walls[1] + perm_walls
+        for j in walls:
+            j.set_color(walls_color)
         objects_vis = []
         objects_resp = []
         for i in range(n_objects):
             if i % 3 == 0:
                 object_vis, object_resp = add_procedural_object(args.boundary)
-                objects_vis.append([object_vis])
+                objects_vis.append(object_vis)
                 objects_resp.append(object_resp)
 
             object_vis, object_resp = add_object(args.boundary)
@@ -408,42 +457,55 @@ def main():
             objects_resp.append(object_resp)
 
         texture_objects = apply_domain_rand(floor, camera,
-                    lights, walls, ceiling, objects_vis, env)
-        remove_textures(floor, walls, ceiling, objects_vis, env)
-        [j.remove() for j in texture_objects]
+                    lights, walls, ceiling, objects_vis, robot_links, env)
+        env.pr.step()
+
+        # remove_textures(floor, walls, ceiling, objects_vis, floor_color, ceiling_color, walls_color, env)
+        # [j.remove() for j in texture_objects]
         lights.set_position([0,0,0])
         camera.set_position(camera_pos, relative_to=env.mobile_base)
-        for _ in range(150): env.pr.step()
+        for _ in range(80): env.pr.step()
 
-        for obj in objects_resp:
-            obj.set_dynamic(0)
+        # for obj in objects_resp:
+        #     obj.set_dynamic(0)
+        #
+        # for objs in objects_vis:
+        #     for obj in objs:
+        #         obj.set_parent(None)
 
+        print(time.time()-time_start)
+        env.pr.set_simulation_timestep(0.001)
         for sample_scene_no in range(l_ep):
             while True:
                 x, y, orient = env.rand_bound()
                 env.pr.set_configuration_tree(env.config_tree)
                 env.mobile_base.set_2d_pose([x, y, orient])
-                env.pr.step()
+                env._reset_arm(random_=True)
+                # env.pr.step()
                 collision_state = env.mobile_base.assess_collision()
+                # collision_state2 = vrep.simCheckCollision(arm_collection, vrep.sim_handle_all)
+                # print(collision_state2)
                 mobile_orient = env.mobile_base.get_orientation()
-                if not collision_state and mobile_orient[0] < 0.02 and mobile_orient[1] < 0.02 :
+                if not collision_state and mobile_orient[0] < 0.02 and mobile_orient[1] < 0.02:
                     break
 
             env.pr.step()
 
             for rand_active in range(2):
+                start = time.time()
                 rand_active = not rand_active
                 if rand_active:
                     texture_objects = apply_domain_rand(floor, camera,
-                                lights, walls, ceiling, objects_vis, env)
+                                lights, walls, ceiling, objects_vis, robot_links, env)
                 else:
                     lights.set_position([0,0,-0.5])
-                    remove_textures(floor, walls, ceiling, objects_vis, env)
+                    remove_textures(floor, walls, ceiling, objects_vis, floor_color, ceiling_color, walls_color, robot_links, env)
 
-                for _ in range(5): env.pr.step()
+                for _ in range(1): env.pr.step()
                 save_sample(rand_active, camera, steps+args.img_n, 'rcan_data')
-            [j.remove() for j in texture_objects]
+                print(time.time()-start)
 
+            [j.remove() for j in texture_objects]
             steps += 1
 
         [j.remove() for j in walls[:-4]]
