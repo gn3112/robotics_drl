@@ -88,25 +88,31 @@ class robotArm(robotEnv):
 
     def _reset_arm(self, random_=False):
         if random_:
-            x_ref, y_ref = self.mobile_base.get_2d_pose()[:2]
+            # x_ref, y_ref = self.mobile_base.get_2d_pose()[:2]
+            # while True:
+            #     x = random.uniform(-0.3,0.08)
+            #     y = random.uniform(-0.2,0.2)
+            #     z = random.uniform(0.15,0.25)
+            #     try:
+            #         joints_pos = self.arm.solve_ik(position=[x+x_ref,y+y_ref,z], euler=[0,0,1.57])
+            #     except:
+            #         continue
+            #
+            #     break
             while True:
-                x = random.uniform(-0.3,0.08)
-                y = random.uniform(-0.2,0.2)
-                z = random.uniform(0.15,0.25)
-                try:
-                    joints_pos = self.arm.solve_ik(position=[x+x_ref,y+y_ref,z], euler=[0,0,1.57])
-                except:
-                    continue
+                self.arm.set_joint_positions([radians(random.uniform(0,180)),radians(random.uniform(-70,50)),radians(random.uniform(-90,90)),radians(random.uniform(-40,140))])
+                self.arm.set_joint_target_velocities([0,0,0,0])
+                self.pr.step()
+                if abs(self.tip.get_position()[-1]) > 0.16:
+                    break
 
-                break
 
-            self.arm.set_joint_positions(joints_pos)
         else:
             self.arm.set_joint_positions(self.arm_start_pos)
 
-        for _ in range(4):
-            self.arm.set_joint_target_velocities([0,0,0,0])
-            self.pr.step()
+            for _ in range(4):
+                self.arm.set_joint_target_velocities([0,0,0,0])
+                self.pr.step()
 
     def _get_reward(self):
         # Get the distance to target
@@ -125,22 +131,22 @@ class robotArm(robotEnv):
         if not self.demonstration_mode:
             current_joint_pos = self.arm.get_joint_positions()
             new_joint_pos = np.array(current_joint_pos) + np.array(action) * 0.05
-            z_tip_after = self._fk(new_joint_pos.tolist()) + 0.14
-            if abs(np.sum(action)) < 0.0001 or z_tip_after < 0.13:
+            z_tip_after = self._fk(new_joint_pos.tolist()) + 0.10
+            if abs(np.sum(action)) < 0.0001 or z_tip_after < 0.20:
                 self.arm.set_joint_target_velocities([0,0,0,0])
             else:
-                scaled_action = np.array(action)*0.01 + np.array(self.prev_tip_pos)
-                try:
-                    prev_joint_pos = np.array(self.arm.get_joint_positions())
-                    joint_values_arm = self.arm.solve_ik(position=scaled_action.tolist(), euler=[0,0,1.57])
-                    diff_joints = (np.array(joint_values_arm) - prev_joint_pos) / 0.05
-                    # self.arm.set_joint_target_positions(joint_values_arm)
-                    self.arm.set_joint_target_velocities(diff_joints.tolist())
-                except:
-                    pass
+                # scaled_action = np.array(action)*0.01 + np.array(self.prev_tip_pos)
+                # try:
+                #     prev_joint_pos = np.array(self.arm.get_joint_positions())
+                #     joint_values_arm = self.arm.solve_ik(position=scaled_action.tolist(), euler=[0,0,1.57])
+                #     diff_joints = (np.array(joint_values_arm) - prev_joint_pos) / 0.05
+                #     # self.arm.set_joint_target_positions(joint_values_arm)
+                #     self.arm.set_joint_target_velocities(diff_joints.tolist())
+                # except:
+                #     pass
 
-            scaled_action = np.array(action) * 1.57
-            self.arm.set_joint_target_velocities(scaled_action)
+                scaled_action = np.array(action) * 1.57
+                self.arm.set_joint_target_velocities(scaled_action)
             return action
         else:
             # tip_pos = np.array(self.tip.get_position())
@@ -150,9 +156,9 @@ class robotArm(robotEnv):
             return scaled_action
 
     def _fk(self, joint_angles):
-        l1, l2, l3 = [0.19, 0.19, 0.075]
+        l1, l2, l3 = [0.2394, 0.2394, 0.076]
         theta1, theta2, theta3 = joint_angles[1:4]
-        z = l1 * cos(theta1) + l2 * cos(theta1 + theta2) + l3 * cos(theta1 + theta2 + theta3)
+        z = l1 * cos(theta1+radians(-18)) + l2 * cos(theta1 + theta2+ radians(-29)) + l3 * cos(theta1 + theta2 + theta3+ radians(-57-29))
         #z = l1 * sin(theta1) + l2 * sin(theta2) + l3 * sin(theta3)
         return z
 

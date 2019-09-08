@@ -18,6 +18,9 @@ class results(object):
         home_dir = os.path.expanduser('~')
         data_path = os.path.join(home_dir,'robotics_drl/data/%s/log.txt'%exp_dir)
         data = pd.read_csv(data_path, sep='\t', header='infer')
+        data['Policy-network loss'] = data['Policy-network loss'].str.strip('[]')
+        data['Alpha'] = data['Alpha'].str.strip('[]')
+        data = data.astype(float)
         data = data.assign(exp=label)
         return data
 

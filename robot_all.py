@@ -113,8 +113,12 @@ class robotAll(robotArm, robotBase):
             while alpha > 0.72:
                 self.pr.set_configuration_tree(self.config_tree) # youBot model deteriorates over time so reset all dynamics at each new episode
                 steps += 1
-                self._reset_base_position(random_=True)
                 self._reset_arm(random_=True)
+                self._reset_base_position(random_=True)
+
+                collision = self.mobile_base.assess_collision()
+                if collision:
+                    continue
 
                 camera_pos = np.array(self.camera_arm.get_position()[:2])
                 mobile_pos = np.array(self.mobile_base.get_2d_pose()[:2])
@@ -154,16 +158,16 @@ class robotAll(robotArm, robotBase):
         pos_ref = self.mobile_base.get_2d_pose()
         dist_from_origin = sqrt(pos_ref[0]**2 + pos_ref[1]**2)
 
-        if dist_ee_target < 0.05: #0.035
+        if dist_ee_target < 0.1: #0.035
             reward = self.reward_termination
             self.done = True
         #elif dist_from_origin > self.boundary: # Out of bound reward for navigation
         #    self.done = True
         #    reward = -3
         else:
-            reward_act = (-np.sum(np.array(self.action) - np.array(self.prev_action))**2) / 20
+            # reward_act = (-np.sum(np.array(self.action) - np.array(self.prev_action))**2) / 20
             reward = -dist_ee_target/5 if self.reward_dense else 0
-            reward += reward_act
+            # reward += reward_act
         return reward, self.done
 
     def _reset_target_position(self,random_=False, position=[-1.15,0,0.325]):

@@ -87,7 +87,9 @@ def optimise(args):
 
 def weights_init(m):
     if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Linear):
-        torch.nn.init.xavier_uniform(m.weight.data)
+        torch.nn.init.orthogonal_(m.weight.data)
+        if m.bias is not None:
+            torch.nn.init.zeros_(m.bias)
 
 def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_STEPS,
           POLYAK_FACTOR, REPLAY_SIZE, TEST_INTERVAL, UPDATE_INTERVAL, UPDATE_START, ENV, OBSERVATION_LOW,
@@ -98,13 +100,13 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     epsilon = 0.0001 #0.1
     epsilon_d = 0.1 #0.3
     weights = 1 #1
-    lambda_ac = 0.85 #0.7
-    lambda_bc = 0.3 #0.4
+    lambda_ac = 0.9 #0.7
+    lambda_bc = 0.4 #0.4
 
     setup_logger(logdir, locals())
     ENV = __import__(ENV)
     if ARM and BASE:
-        env = ENV.youBotAll('youbot_navig2.ttt', obs_lowdim=OBSERVATION_LOW, rpa=RPA, reward_dense=REWARD_DENSE, boundary=1)
+        env = ENV.robotAll('robot_scene.ttt', obs_lowdim=OBSERVATION_LOW, rpa=RPA, reward_dense=REWARD_DENSE, boundary=1)
     elif ARM:
         env = ENV.youBotArm('youbot_navig.ttt', obs_lowdim=OBSERVATION_LOW, rpa=RPA, reward_dense=REWARD_DENSE)
     elif BASE:
@@ -122,8 +124,9 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
         actor = ActorImageNet(HIDDEN_SIZE, action_space, obs_space, flow_type=FLOW_TYPE, flows=FLOWS).float().to(device)
         critic_1 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True).float().to(device)
         critic_2 = Critic(HIDDEN_SIZE, 1, obs_space, action_space, state_action= True).float().to(device)
-        critic_1.load_state_dict(torch.load('data/youbot_all_final_21-08-2019_22-32-00/models/critic1_model_473000.pkl'))
-        critic_2.load_state_dict(torch.load('data/youbot_all_final_21-08-2019_22-32-00/models/critic1_model_473000.pkl'))
+        # actor.load_state_dict(torch.load('/home/georges/robotics_drl/data/robot_all_final_img_07-09-2019_10-31-10/model.pkl'))
+        # critic_1.load_state_dict(torch.load('data/robot_all_final_img_07-09-2019_10-31-10/models/critic1_model_50000.pkl'))
+        # critic_2.load_state_dict(torch.load('data/robot_all_final_img_07-09-2019_10-31-10/models/critic1_model_50000.pkl'))
 
     actor.apply(weights_init)
     # critic_1.apply(weights_init)
@@ -142,7 +145,8 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
     # Replay buffer
     if PRIORITIZE_REPLAY:
         # D = PrioritizedReplayBuffer(REPLAY_SIZE, ALPHA)
-        D = ReplayMemory(device, 3, DISCOUNT, 1, BETA, ALPHA, REPLAY_SIZE)
+        D = ReplayMemory(device, 1, DISCOUNT, 10, BETA, ALPHA, REPLAY_SIZE)
+        # E = ReplayMemory(device, 1, DISCOUNT, 1, BETA, ALPHA, REPLAY_SIZE)
     else:
         D = deque(maxlen=REPLAY_SIZE)
 
@@ -186,7 +190,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
               if not OBSERVATION_LOW:
                   state['low'] = state['low'].float().to(device)
                   state['high'] = state['high'].float().to(device)
-              action, _ = actor(state, log_prob=False, deterministic=False)
+              action, _, _ = actor(state, log_prob=False, deterministic=False)
               if not OBSERVATION_LOW:
                   state['low'] = state['low'].float().cpu()
                   state['high'] = state['high'].float().cpu()
@@ -239,11 +243,12 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                         weights_pr = torch.from_numpy(weights_pr).float().to(device)
                     else:
                         idxes, high_state_batch, low_state_batch, action_batch, reward_batch, high_state_next_batch, low_state_next_batch, done_batch, weights_pr = D.sample(BATCH_SIZE)
+                        # idxes, high_state_batch, low_state_batch, action_batch, reward_batch, high_state_next_batch, low_state_next_batch, done_batch, weights_pr = E.sample(BATCH_SIZE)
+                        # idxes = torch.cat((idxes_e, idxes_d))
+                        state_batch = {'low': low_state_batch.float().to(device).view(-1,29), 'high':high_state_batch.float().to(device).view(-1,(3+1)*env.frames,128,128)}
+                        next_state_batch = {'low': low_state_next_batch.float().to(device).view(-1,29), 'high': high_state_next_batch.float().to(device).view(-1,(3+1)*env.frames,128,128)}
 
-                        state_batch = {'low': low_state_batch.float().to(device).view(-1,32), 'high':high_state_batch.float().to(device).view(-1,12,128,128)}
-                        next_state_batch = {'low': low_state_next_batch.float().to(device).view(-1,32), 'high': high_state_next_batch.float().to(device).view(-1,12,128,128)}
-
-                        action_batch = action_batch.float().to(device)
+                        action_batch = action_batch.float().to(device).view(-1,7)
                         reward_batch = reward_batch.float().to(device)
                         done_batch = done_batch.float().to(device)
                         weights_pr = weights_pr.float().to(device)
@@ -288,8 +293,8 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                             'next_state':torch.cat(state_next_batch,dim=0),
                             'done':torch.cat(done_batch,dim=0)}
 
-                action, log_prob = actor(batch['state'],log_prob=True, deterministic=False)
-
+                action, log_prob, aux = actor(batch['state'],log_prob=True, deterministic=False)
+                aux_loss = F.mse_loss(aux.view(-1,5),batch['state']['low'][:,-5:])
                 #Automatic entropy tuning
                 alpha_loss = -(log_alpha.float() * (log_prob + target_entropy).float().detach()).mean()
                 alpha_optimizer.zero_grad()
@@ -305,8 +310,8 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                 else:
                     # No value function network
                     with torch.no_grad():
-                        next_actions, next_log_prob = actor(batch['next_state'],log_prob=True, deterministic=False)
-                        target_qs = torch.min(target_critic_1(batch['next_state']['low'] if not OBSERVATION_LOW else batch['next_state'], next_actions), target_critic_2(batch['next_state']['low'] if not OBSERVATION_LOW else batch['next_state'], next_actions)) - alpha * next_log_prob
+                        next_actions, next_log_prob, _ = actor(batch['next_state'],log_prob=True, deterministic=False)
+                    target_qs = torch.min(target_critic_1(batch['next_state']['low'] if not OBSERVATION_LOW else batch['next_state'], next_actions), target_critic_2(batch['next_state']['low'] if not OBSERVATION_LOW else batch['next_state'], next_actions)) - alpha * next_log_prob
                     y_q = batch['reward'] + DISCOUNT * (1 - batch['done']) * target_qs.detach()
 
                 td_error_critic1 = critic_1(batch['state']['low'] if not OBSERVATION_LOW else batch['state'], batch['action']) - y_q
@@ -330,6 +335,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                     i = 0
                     count_dem = 0
                     for idx in idxes:
+                        idx -= REPLAY_SIZE
                         priorities[i] += epsilon
                         if idx < n_demonstrations:
                             priorities[i] += epsilon_d
@@ -340,10 +346,10 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                                     state_dem = torch.cat((state_dem, batch['state'][i].view(1,-1)), dim=0)
                                 else:
                                     state_dem['high'] = torch.cat((state_dem['high'], batch['state']['high'][i,].view(-1,(3+1)*env.frames,128,128)), dim=0)
-                                    state_dem['low'] = torch.cat((state_dem['low'], batch['state']['low'][i,].view(-1,32)), dim=0)
+                                    state_dem['low'] = torch.cat((state_dem['low'], batch['state']['low'][i,].view(-1,29)), dim=0)
                         i += 1
                     if not action_dem.nelement() == 0:
-                        actual_action_dem, _ = actor(state_dem, log_prob=False, deterministic=True)
+                        actual_action_dem, _, _ = actor(state_dem, log_prob=False, deterministic=True)
                         # q_value_actor = (critic_1(batch['state'][i], batch['action'][i]) + critic_2(batch['state'][i], batch['action'][i]))/2
                         # q_value_actual = (critic_1(batch['state'][i], actual_action_dem) + critic_2(batch['state'][i], actual_action_dem))/2
                         # if q_value_actor > q_value_actual: # Q Filter
@@ -353,7 +359,6 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
 
                     D.update_priorities(idxes, priorities)
                 lambda_bc = (count_dem/BATCH_SIZE) / 5
-
                 # Update V-function by one step of gradient descent
                 if VALUE_FNC:
                     v_loss = (value_critic(batch['state']) - y_v).pow(2).mean().to(device)
@@ -363,9 +368,9 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
                     value_critic_optimiser.step()
 
                 # Update policy by one step of gradient ascent
-                with torch.no_grad():
-                    new_qs = torch.min(critic_1(batch["state"]['low'] if not OBSERVATION_LOW else batch['state'], action),critic_2(batch["state"]['low'] if not OBSERVATION_LOW else batch['state'], action))
-                policy_loss = lambda_ac * (weighted_sample_entropy.view(-1) - new_qs).mean().to(device) + lambda_bc * behavior_loss
+                # with torch.no_grad():
+                new_qs = torch.min(critic_1(batch["state"]['low'] if not OBSERVATION_LOW else batch['state'], action),critic_2(batch["state"]['low'] if not OBSERVATION_LOW else batch['state'], action))
+                policy_loss = lambda_ac * (weighted_sample_entropy.view(-1) - new_qs).mean().to(device) - lambda_bc * behavior_loss + aux_loss
                 actor_optimiser.zero_grad()
                 policy_loss.backward()
                 actor_optimiser.step()
@@ -405,6 +410,7 @@ def train(BATCH_SIZE, DISCOUNT, ENTROPY_WEIGHT, HIDDEN_SIZE, LEARNING_RATE, MAX_
             logz.log_tabular('Alpha loss',alpha_loss.detach().cpu().numpy())
             logz.log_tabular('Alpha',alpha.detach().cpu().squeeze().numpy())
             logz.log_tabular('Demonstrations current batch', count_dem)
+            logz.log_tabular('Auxiliary loss', aux_loss.detach().cpu().squeeze().numpy())
             logz.dump_tabular()
 
             logz.save_pytorch_model(actor.state_dict())

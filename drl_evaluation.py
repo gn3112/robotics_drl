@@ -38,11 +38,11 @@ class evaluation_sac(object):
                 img_ep = []
                 while True:
                     if self.env.obs_lowdim:
-                        action, _ = actor(state.float().to(self.device), log_prob=False, deterministic=True)
+                        action, _, _ = actor(state.float().to(self.device), log_prob=False, deterministic=True)
                     else:
                         state['low'] = state['low'].float().to(self.device)
                         state['high'] = state['high'].float().to(self.device)
-                        action, _ = actor(state, log_prob=False, deterministic=True)
+                        action, _, _ = actor(state, log_prob=False, deterministic=True)
                     steps_ep += 1
                     state, reward, done = self.env.step(action.detach().cpu().squeeze(dim=0).tolist())
                     total_reward += reward

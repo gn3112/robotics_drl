@@ -14,11 +14,11 @@ class youBotEnv(object):
     def __init__(self, scene_name, reward_dense, boundary):
         self.pr = PyRep()
         SCENE_FILE = join(dirname(abspath(__file__)), scene_name)
-        self.pr.launch(SCENE_FILE,headless=True)
+        self.pr.launch(SCENE_FILE, headless=True)
         self.pr.start()
         self.pr.set_simulation_timestep(0.05)
 
-        if scene_name != 'youbot_navig2.ttt':
+        if scene_name != 'youbot_navig2.ttt': #youbot_navig2
             home_dir = os.path.expanduser('~')
             os.chdir(join(home_dir,'robotics_drl'))
             self.pr.import_model('youbot.ttm')
@@ -35,6 +35,22 @@ class youBotEnv(object):
         self.reward_dense = reward_dense
         self.reward_termination = 1 if self.reward_dense else 0
         self.boundary = boundary
+
+        # Robot links
+        robot_links = []
+        links_size = [1,4,4,2,1,1,4]
+        for i in range(len(links_size)):
+            robot_links.append([Shape('link%s_%s'%(i+1,j)) for j in range(links_size[i])])
+
+        links_color = [[0,0,1],[0,1,0],[1,0,0]]
+        color_i = 0
+        for j in robot_links:
+            if color_i > 2:
+                color_i = 0
+            for i in j:
+                i.remove_texture()
+                i.set_color(links_color[color_i])
+            color_i += 1
 
     def render(self,view='top'):
         if view == 'top':

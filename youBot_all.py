@@ -33,7 +33,7 @@ class youBotAll(youBotArm, youBotBase):
         self.action = [0 for _ in range(self.action_space)]
         self.prev_action = [0 for _ in range(self.action_space)]
         self.steps_ep = 0
-        self.frames = 3
+        self.frames = 1
         self.prev_obs = []
         self.arm.set_motor_locked_at_zero_velocity(1)
         self.table = Shape('table')
@@ -48,17 +48,20 @@ class youBotAll(youBotArm, youBotBase):
             return None, torch.tensor(np.concatenate((obsArm[:-11], obsBase[:-10], self.action, targ_vec, targ_vec_base),axis=0)).float()
         else:
             new_obs = torch.cat((resize(self.render('arm')).view(-1,128,128),resize_d(self.camera_arm.capture_depth()).view(-1,128,128)), dim=0)
-            if self.steps_ep == 0:
-                obs = new_obs.view(-1,128,128)
-                for _ in range(self.frames-1):
-                    obs = torch.cat((obs,new_obs.view(-1,128,128)),dim=0)
+            if self.frames < 2:
+                obs = new_obs
             else:
-                obs = self.prev_obs
-                for i in range(self.frames-1):
-                    obs[i*4:i*4+4,:,:] = obs[i*4+4:i*4+8,:,:]
-                obs[self.frames*4-4:self.frames*4,:,:] = new_obs
+                if self.steps_ep == 0:
+                    obs = new_obs.view(-1,128,128)
+                    for _ in range(self.frames-1):
+                        obs = torch.cat((obs,new_obs.view(-1,128,128)),dim=0)
+                else:
+                    obs = self.prev_obs
+                    for i in range(self.frames-1):
+                        obs[i*4:i*4+4,:,:] = obs[i*4+4:i*4+8,:,:]
+                    obs[self.frames*4-4:self.frames*4,:,:] = new_obs
 
-            self.prev_obs = obs
+                    self.prev_obs = obs
 
             return obs.view(-1,128,128), torch.tensor(np.concatenate((obsArm, obsBase, self.action, targ_vec, targ_vec_base),axis=0)).float()
 
@@ -100,14 +103,34 @@ class youBotAll(youBotArm, youBotBase):
 
     def reset(self):
         self.steps_ep = 0
-        self.pr.set_configuration_tree(self.config_tree) # youBot model deteriorates over time so reset all dynamics at each new episode
 
         # youBotArm._reset_target_position(self, random_=False, position=[-0.5,0,0.3])
         self._reset_target_position(random_=False)
-        self._reset_base_position(random_=True)
-        # self._reset_base_position(random_=False)
-        self._reset_arm(random_=True)
-        self.pr.step()
+
+        alpha = 1
+        steps = 0
+        while True:
+            while alpha > 0.72:
+                self.pr.set_configuration_tree(self.config_tree) # youBot model deteriorates over time so reset all dynamics at each new episode
+                steps += 1
+                self._reset_base_position(random_=True)
+
+                camera_pos = np.array(self.camera_arm.get_position()[:2])
+                mobile_pos = np.array(self.mobile_base.get_2d_pose()[:2])
+                target_pos = np.array(self.target_base.get_position()[:2])
+
+                vec1 = mobile_pos - camera_pos
+                vec2 = target_pos - mobile_pos
+                alpha = np.abs(np.arccos(np.dot(vec1,vec2)/(np.linalg.norm(vec1)*np.linalg.norm(vec2))))
+                if steps > 20:
+                    break
+            # self._reset_base_position(random_=False)
+            self._reset_arm(random_=True)
+            self.pr.step()
+
+            mobile_orient = self.mobile_base.get_orientation()
+            if mobile_orient[0] < 0.02 and mobile_orient[1] < 0.02:
+                break
 
         self.prev_tip_pos = np.array(self.tip.get_position())
 
@@ -151,8 +174,8 @@ class youBotAll(youBotArm, youBotBase):
         else:
             x_T, y_T, z_T = position
 
-        self.target_base.set_position([x_T,y_T,z_T])
-        self.table.set_position([x_T,y_T,0.15])
+        #self.target_base.set_position([x_T,y_T,z_T])
+        #self.table.set_position([x_T,y_T,0.15])
         self.done = False
 
     def step_limit(self):

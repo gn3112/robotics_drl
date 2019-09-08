@@ -3,6 +3,7 @@ from pyrep.objects.dummy import Dummy
 from pyrep.objects.shape import Shape
 from pyrep.const import PrimitiveShape
 from youBot_all import youBotAll
+from robot_all import robotAll
 from youBot_base import youBotBase
 from youBot_arm import youBotArm
 import logz
@@ -11,12 +12,12 @@ import numpy as np
 import time
 import cv2
 import shutil
-from math import sqrt
+from math import sqrt, radians
 import torchvision
 
-class youBot_controller(youBotAll):
+class youBot_controller(robotAll):
     def __init__(self, OBS_LOW, ARM, BASE, REWARD, BOUNDARY, NAME):
-        super().__init__('youbot_navig2.ttt', obs_lowdim=OBS_LOW, rpa=1, reward_dense=REWARD, demonstration_mode=True)
+        super().__init__('robot_scene.ttt', obs_lowdim=OBS_LOW, rpa=1, reward_dense=REWARD, demonstration_mode=True)
 
         self.OBS_LOW = OBS_LOW
         self.ARM = ARM
@@ -146,7 +147,7 @@ def main():
                 action_base, path_base_done = path_base.step()
                 steps += 1
                 if args.ARM:
-                    action_arm = [0,0,0,0,0]
+                    action_arm = [0,0,0,0]
                     action = np.concatenate((action_base,action_arm),axis=0)
                 else:
                     action = action_base
@@ -161,7 +162,7 @@ def main():
 
                 obs = next_obs
                 target_rel_pos = controller.target_base.get_position(relative_to=controller.mobile_base)
-                dist_ee_target = sqrt(target_rel_pos[0]**2 + target_rel_pos[1]**2) - 0.45
+                dist_ee_target = sqrt(target_rel_pos[0]**2 + target_rel_pos[1]**2) - 0.25
                 if not args.ARM:
                     if done:
                         break
@@ -202,7 +203,7 @@ def main():
 
                 try:
                     while not done:
-                        action_arm, path_arm_done = [0,0,0,0,0], path_arm.step() #Action zero as computed in the environment class
+                        action_arm, path_arm_done = [0,0,0,0], path_arm.step() #Action zero as computed in the environment class
                         action_base = [0,0,0] if args.BASE else []
                         steps += 1
                         next_obs, reward, done = controller.step(np.concatenate((action_base,action_arm),axis=0).tolist())

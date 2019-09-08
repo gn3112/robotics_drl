@@ -182,51 +182,50 @@ class ActorImageNet(nn.Module):
         self.log_std_min, self.log_std_max = -20, 2  # Constrain range of standard deviations to prevent very deterministic/stochastic policies
         self.obs_space = obs_space[0] - 5
         self.action_space = action_space
-        self.conv1 = nn.Conv2d(12,48,kernel_size=6, stride=2) # Check here for dim (frame staking)
-        # self.max_pool1 = nn.MaxPool2d(kernel_size=3, stride=1)
-        # self.down1 = Downsample(channels=64, filt_size=3, stride=2) #filt_size is blur kernel 3 or 5
-        self.conv2 = nn.Conv2d(48, 64,kernel_size=4, stride=1)
-        # self.max_pool2 = nn.MaxPool2d(kernel_size=3, stride=1)
-        # self.down2 = Downsample(channels=64, filt_size=3, stride=2) #filt_size is blur kernel 3 or 5
-
+        self.conv1 = nn.Conv2d(4,16,kernel_size=4, stride=2) # Check here for dim (frame staking)
+        self.conv2 = nn.Conv2d(16, 32,kernel_size=8, stride=4)
         self.fc1 = nn.Linear(self.obs_space, 256)
-        # self.fc2 = nn.Linear(256,64)
-
-        # self.conv3 = nn.Conv2d(64,64,kernel_size=3, stride=1)
-        # self.max_pool3 = nn.MaxPool2d(kernel_size=2, stride=1)
-        # self.down3 = Downsample(channels=64, filt_size=3, stride=2) #filt_size is blur kernel 3 or 5
-        # self.conv4 = nn.Conv2d(64,64,kernel_size=3, stride=1)
-        # self.fc3 = nn.Linear(36864,self.action_space*2)
-        self.fc2 = nn.Linear(223040,256)
-        self.fc3 = nn.Linear(256,256)
-        self.fc_gate = nn.Linear(256, 1)
-        self.fc4 = nn.Linear(256,self.action_space*2)
+        self.fc2 = nn.Linear(6528,256)
+        self.fc3 = nn.Linear(256,64)
+        self.fc_gate = nn.Linear(64, 1)
+        self.fc_aux = nn.Linear(64, 5)
+        self.fc4 = nn.Linear(64,self.action_space*2)
 
         flows, flow_type = (1, 'tanh') if flows == 0 else (flows, flow_type)
         self.flows = NormalisingFlow(self.action_space, flows, flow_type=flow_type)
 
     def forward(self, obs, log_prob=False, deterministic=False):
-        high_obs = obs['high'].view(-1,12,128,128)
-        low_obs = obs['low'].view(-1,32)[:,:27]
+        high_obs = obs['high'].view(-1,4,128,128)
+        # torchvision.utils.save_image(high_obs[:,:3,:,:].view(3,128,128),'actual_img1.png')
+        # print('High Obs:', torch.min(high_obs), torch.max(high_obs), torch.mean(high_obs))
+        low_obs = obs['low'].view(-1,29)[:,:self.obs_space]
         high_x = F.relu(self.conv1(high_obs))
+        # torchvision.utils.save_image(high_x.view(16,1,63,63),'activation1.png')
+        # print('CNN1: ',torch.min(high_x), torch.max(high_x), torch.mean(high_x))
+        # print('CNN1: ', torch.min(self.conv1.weight.data),torch.max(self.conv1.weight.data), torch.mean(self.conv1.weight.data))
         high_x = F.relu(self.conv2(high_x))
-        print(torch.mean(high_x))
-        print(torch.mean(self.conv2.weight.data))
+        # torchvision.utils.save_image(high_x.view(32,1,14,14),'activation2.png')
+        # print('CNN2: ', torch.min(high_x), torch.max(high_x), torch.mean(high_x))
+        # print('CNN2: ', torch.min(self.conv2.weight.data),torch.max(self.conv2.weight.data), torch.mean(self.conv2.weight.data))
         low_x = F.relu(self.fc1(low_obs)).view(-1,256)
-        # low_x = F.relu(self.fc2(low_x)).view(-1,64,1,1)
-        #
-        # x = F.relu(self.conv3(high_x + low_x))
-        # x = F.relu(self.conv4(x))
+
         x = F.relu(self.fc2(torch.cat((high_x.view(high_x.size(0),-1), low_x),dim=1)))
+        # print('FC2: ',torch.min(x), torch.max(x), torch.mean(x))
+        # print('FC2: ', torch.min(self.fc2.weight.data),torch.max(self.fc2.weight.data), torch.mean(self.fc2.weight.data))
         x = F.relu(self.fc3(x))
+        # print('FC3: ',torch.min(x), torch.max(x), torch.mean(x))
+        # print('FC3: ', torch.min(self.fc3.weight.data),torch.max(self.fc3.weight.data), torch.mean(self.fc3.weight.data))
         gate = F.sigmoid(self.fc_gate(x)).view(-1,1)
         device = gate.get_device()
         neg_gate = torch.tensor([1.]).view(-1,1).repeat(gate.size()[0], 1).to(device) - gate
+        aux = self.fc_aux(x)
         policy = self.fc4(x).view(-1,self.action_space*2)
+        # print('FC4: ', torch.min(self.fc4.weight.data),torch.max(self.fc4.weight.data), torch.mean(self.fc4.weight.data))
+        # print('GATE: ', gate, neg_gate)
         policy[:,:3] = torch.matmul(policy[:,:3].clone().view(-1,3,1), gate.view(-1,1,1)).view(-1,3)
-        policy[:,3:8] = torch.matmul(policy[:,3:8].clone().view(-1,5,1), neg_gate.view(-1,1,1)).view(-1,5)
-        policy[:,8:11] = torch.matmul(policy[:,8:11].clone().view(-1,3,1), gate.view(-1,1,1)).view(-1,3)
-        policy[:,11:] = torch.matmul(policy[:,11:].clone().view(-1,5,1), neg_gate.view(-1,1,1)).view(-1,5)
+        policy[:,3:7] = torch.matmul(policy[:,3:7].clone().view(-1,4,1), neg_gate.view(-1,1,1)).view(-1,4)
+        policy[:,7:10] = torch.matmul(policy[:,7:10].clone().view(-1,3,1), gate.view(-1,1,1)).view(-1,3)
+        policy[:,10:] = torch.matmul(policy[:,10:].clone().view(-1,4,1), neg_gate.view(-1,1,1)).view(-1,4)
 
         policy_mean, policy_log_std = policy.view(-1,self.action_space*2).chunk(2,dim=1)
         policy_log_std = torch.clamp(policy_log_std, min=self.log_std_min, max=self.log_std_max)
@@ -234,8 +233,7 @@ class ActorImageNet(nn.Module):
         action = base_distribution.mean if deterministic else base_distribution.rsample()
         log_p = base_distribution.log_prob(action).sum(dim=1) if log_prob else None
         action, log_p = self.flows(action, log_p)
-        print(action)
-        return action, log_p
+        return action, log_p, aux
 
 class CriticImageNet(nn.Module):
     def __init__(self, hidden_size, output_size, obs_space, action_space, state_action=False, layer_norm=False):

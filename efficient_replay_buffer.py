@@ -6,7 +6,7 @@ import torch
 
 
 Transition = namedtuple('Transition', ('timestep', 'state', 'low_state', 'action', 'reward', 'nonterminal'))
-blank_trans = Transition(0, torch.zeros(4, 128, 128, dtype=torch.uint8), torch.zeros(32, dtype=torch.float), None, 0, False)
+blank_trans = Transition(0, torch.zeros(4, 128, 128, dtype=torch.uint8), torch.zeros(29, dtype=torch.float), None, 0, False)
 
 
 # Segment tree data structure where parent node values are sum/max of children node values
