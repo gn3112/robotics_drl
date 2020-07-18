@@ -2,6 +2,8 @@
 
 This repo contains a training pipeline for robot learning in a virtual environment for both manipulation and locomotion. With the final goal of deploying this trained agent in the real-world, the [RCAN Sim2Real](https://arxiv.org/abs/1812.07252) pipeline is extended with a novel dataset for joint locomotion and manipulation, which supports transfer of a learned policy from simulation to the real-world (this work can be found [there](https://github.com/gn3112/rcan_navig)).
 
+![robot](robot_target.png)
+
 **Motivation behind this project**: it was realised as part of my MSc thesis with the challenge of being able to control a robot arm and a moving base in an unconstrained environment autonomously. The first step toward this goal were realised with a sample efficient training pipeline combining both manipulation and locomotion motor control.
 
 ## Simulation environment
@@ -24,6 +26,8 @@ For the mobile manipulation agent, simply training with a simple fully-connected
 - Also, to reduce the time complexity of the algorithm only the actor is trained on images while the critic is trained on the symbolic observation space, as the critic is not needed during deployment.
 
 ## Results
+
+![score](base_arm_score.png =842x)
 
 ## Relevant papers
 -  Dmitry Kalashnikov, Alex Irpan, Peter Pastor, Julian Ibarz, Alexander Herzog, Eric Jang, Deirdre Quillen, Ethan Holly, Mrinal Kalakrishnan, Vincent Van- houcke, and Sergey Levine. Qt-opt: Scalable deep reinforcement learning for vision-based robotic manipulation. CoRR, abs/1806.10293, 2018. URL http://arxiv.org/abs/1806.10293.
