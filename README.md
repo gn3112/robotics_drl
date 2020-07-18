@@ -4,30 +4,32 @@ This repo contains a training pipeline for robot learning in a virtual environme
 
 ![robot](robot_target.png)
 
-**Motivation behind this project**: it was realised as part of my MSc thesis with the challenge of being able to control a robot arm and a moving base in an unconstrained environment autonomously. The first step toward this goal were realised with a sample efficient training pipeline combining both manipulation and locomotion motor control.
+**Motivation behind this project**: it was accomplished as part of my MSc thesis with the challenge of being able to control a robot arm and a moving base in an unconstrained environment autonomously. The first steps toward this goal were established by building a sample efficient training algorithm combining both manipulation and locomotion motor control.
 
 ## Simulation environment
-Simulation experiment are performed in VREP using the PyRep toolkit. Two robots were used for experiments in simulation, both with omni-directionnal wheels and >4dof arm on top of the base. The kuka youbot model was provided by VREP and the other custom designed robot model was imported from its CAD model.
+Simulation experiments are performed in VREP using the PyRep toolkit. Two robots were used for experiments in simulation, both with omni-directionnal wheels and a >4dof arm on top of the base. The kuka youbot model was provided by VREP and the other custom designed robot model was created from its CAD files.
 
 ## Training algorithm
 The soft actor-critic algorithm was chosen as the backbone of our DRL agent. The value-network in the original paper is removed and the value function is computed from the Q-networks.
-We sample and fill the replay buffer with demonstration before the start of training. We use prioritize experience replay to sample demonstrations more frequently and sample transitions having a higher temporal difference error with a higher probability.
+We sample and fill the replay buffer with demonstrations before the start of training. We use prioritize experience replay to sample demonstrations more frequently and sample transitions having a higher temporal difference error with a higher probability.
 
-For the mobile manipulation agent, simply training with a simple fully-connected network on symbolic observations did not perform well. Reasons for this originated from destabil- isation of the mobile platform with simultaneous motion of both the arm and the base and unnecessary exploration for the arm in specific region of the state space. We therefore in- troduced a branch in the network to dampen the effect of one another by simply computing a cut-off value with a sigmoid (Fig. 9).
-
+For the mobile manipulation agent, simply training with a simple fully-connected network on symbolic observations did not perform well. Reasons for this originated from destabilisation of the mobile platform with simultaneous motion of both the arm and the base and unnecessary exploration for the arm in specific region of the state space. We therefore introduced a branch in the network to dampen the effect of one another by simply computing a cut-off value with a sigmoid.
 
 ## Algorithm parameters (hyperparameters)
 - Size of the replay buffer: 100k
 - 1-step returns
 - Auxiliary loss for behavior cloning added to the policy network loss
 - Q-filter to account from demonstrator suboptimal actions
-- Sparse reward function with a penalizing reward for to high accelerations
+- Sparse reward function with a penalizing reward for high acceleration
 - The weight of the behavioural cloning loss is annealed as such: (N DEM/BATCH SIZE) × 0.4
-- Also, to reduce the time complexity of the algorithm only the actor is trained on images while the critic is trained on the symbolic observation space, as the critic is not needed during deployment.
 
 ## Results
 
-![score](base_arm_score.png =842x)
+<img src="base_arm_score.png" width=500)>
+
+## Running the code
+1. ...
+2. ...
 
 ## Relevant papers
 -  Dmitry Kalashnikov, Alex Irpan, Peter Pastor, Julian Ibarz, Alexander Herzog, Eric Jang, Deirdre Quillen, Ethan Holly, Mrinal Kalakrishnan, Vincent Van- houcke, and Sergey Levine. Qt-opt: Scalable deep reinforcement learning for vision-based robotic manipulation. CoRR, abs/1806.10293, 2018. URL http://arxiv.org/abs/1806.10293.
